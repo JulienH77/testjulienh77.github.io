@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Animation de Polyline avec Leaflet</title>
+    <title>Animation Fluide de Polyline avec Leaflet</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <style>
@@ -11,7 +11,7 @@
 </head>
 <body>
     <div id="map"></div>
-    <button id="testAnimation">Tester une animation simple</button>
+    <button id="testAnimation">Tester une animation fluide</button>
 
     <script>
         // Initialisation de la carte avec OSM
@@ -20,7 +20,7 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Bouton pour tester une animation simple
+        // Bouton pour tester une animation fluide
         document.getElementById('testAnimation').addEventListener('click', () => {
             // Coordonnées pour une ligne simple (Paris)
             const latlngs = [
@@ -31,18 +31,39 @@
             ];
 
             // Création d'une polyline vide
-            const polyline = L.polyline([], { color: '#FF0000' }).addTo(map);
+            const polyline = L.polyline([latlngs[0]], { color: '#FF0000' }).addTo(map);
 
-            // Animation manuelle
-            let i = 0;
-            const interval = setInterval(() => {
-                if (i < latlngs.length) {
-                    polyline.setLatLngs(latlngs.slice(0, i + 1));
-                    i++;
-                } else {
-                    clearInterval(interval);
+            // Animation fluide
+            let startTime;
+            const duration = 5000; // Durée de l'animation en ms
+
+            function animate(currentTime) {
+                if (!startTime) startTime = currentTime;
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                const numPoints = Math.floor(progress * (latlngs.length - 1)) + 1;
+                const partialProgress = (progress * (latlngs.length - 1)) % 1;
+
+                const points = latlngs.slice(0, numPoints);
+                if (numPoints < latlngs.length) {
+                    const startPoint = latlngs[numPoints - 1];
+                    const endPoint = latlngs[numPoints];
+                    const interpolatedPoint = L.latLng(
+                        startPoint.lat + (endPoint.lat - startPoint.lat) * partialProgress,
+                        startPoint.lng + (endPoint.lng - startPoint.lng) * partialProgress
+                    );
+                    points.push(interpolatedPoint);
                 }
-            }, 1000); // Intervalle de 1 seconde pour l'animation
+
+                polyline.setLatLngs(points);
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            }
+
+            requestAnimationFrame(animate);
         });
     </script>
 </body>
