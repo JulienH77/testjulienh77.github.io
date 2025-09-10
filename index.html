@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Affichage et Animation des trajets de Mai 2025</title>
+    <title>Affichage et Animation des Trajets</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <style>
@@ -11,7 +11,7 @@
 </head>
 <body>
     <div id="map"></div>
-    <button id="animateMay2025">Animer "May 2025"</button>
+    <button id="animateAll">Animer tous les trajets</button>
 
     <script>
         // Initialisation de la carte avec OSM
@@ -20,8 +20,15 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Variable pour stocker les polylines des trajets de mai 2025
-        let may2025Polylines = [];
+        // Couleurs par type de transport
+        const colorByTrajet = {
+            'avion': '#FF0000',
+            'train': '#00FF00',
+            'bateau': '#0000FF',
+        };
+
+        // Variable pour stocker les polylines des trajets
+        let polylines = [];
 
         // Chargement du GeoJSON externe
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
@@ -29,36 +36,30 @@
             .then(data => {
                 console.log("GeoJSON chargé:", data);
 
-                // Filtrer et afficher les trajets pour "May 2025 - China"
-                const may2025Trajectories = data.features.filter(
-                    feature => feature.properties.voyage === "May 2025 - China"
-                );
-
-                if (may2025Trajectories.length === 0) {
-                    alert("Aucun trajet trouvé pour 'May 2025 - China'.");
-                    return;
-                }
-
-                // Afficher chaque trajet
-                may2025Trajectories.forEach(feature => {
+                // Afficher tous les trajets
+                data.features.forEach(feature => {
                     if (feature.geometry.type === 'LineString') {
                         const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
-                        const polyline = L.polyline(latlngs, { color: '#FF0000', weight: 3 }).addTo(map);
-                        may2025Polylines.push(polyline);
+                        const color = colorByTrajet[feature.properties.trajet] || '#808080';
+                        const polyline = L.polyline(latlngs, { color: color, weight: 3 }).addTo(map);
+                        polylines.push({ id: feature.properties.id, polyline: polyline, latlngs: latlngs });
                     }
                 });
 
-                // Bouton pour animer les trajets de "May 2025"
-                document.getElementById('animateMay2025').addEventListener('click', () => {
-                    if (may2025Polylines.length === 0) {
-                        alert("Aucun trajet de 'May 2025' n'est disponible.");
+                // Trier les polylines par ID
+                polylines.sort((a, b) => a.id - b.id);
+
+                // Bouton pour animer tous les trajets
+                document.getElementById('animateAll').addEventListener('click', () => {
+                    if (polylines.length === 0) {
+                        alert("Aucun trajet n'est disponible.");
                         return;
                     }
 
-                    // Animer chaque trajet
-                    may2025Polylines.forEach((polyline, index) => {
+                    // Animer chaque trajet dans l'ordre des IDs
+                    polylines.forEach((item, index) => {
                         setTimeout(() => {
-                            animatePolyline(polyline);
+                            animatePolyline(item.polyline, item.latlngs);
                         }, index * 5000); // Délai entre chaque trajet
                     });
                 });
@@ -66,8 +67,7 @@
             .catch(error => console.error("Erreur de chargement du GeoJSON:", error));
 
         // Fonction pour animer une polyline
-        function animatePolyline(polyline) {
-            const latlngs = polyline.getLatLngs();
+        function animatePolyline(polyline, latlngs) {
             polyline.setLatLngs([latlngs[0]]);
 
             let startTime;
