@@ -31,6 +31,8 @@
             // Ajoute d'autres types si nécessaire
         };
 
+        // Variable globale pour stocker le GeoJSON chargé
+        let geojsonData;
         // Variable pour stocker les couches GeoJSON
         let allLayers = L.featureGroup().addTo(map);
         let chinaLayers = L.featureGroup();
@@ -39,8 +41,9 @@
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
             .then(response => response.json())
             .then(data => {
-                console.log("GeoJSON chargé:", data); // Vérifie que le fichier est bien chargé
-                showAllTrajectories(data);
+                console.log("GeoJSON chargé:", data);
+                geojsonData = data; // Stocke les données dans la variable globale
+                showAllTrajectories(geojsonData);
             })
             .catch(error => console.error("Erreur de chargement du GeoJSON:", error));
 
@@ -59,11 +62,16 @@
         }
 
         // Fonction pour afficher et animer uniquement "May 2025 - China"
-        function animateChinaTrajectories(geojson) {
+        function animateChinaTrajectories() {
+            if (!geojsonData) {
+                alert("Le GeoJSON n'est pas encore chargé.");
+                return;
+            }
+
             allLayers.clearLayers();
             chinaLayers.clearLayers();
 
-            const chinaTrajectories = geojson.features.filter(
+            const chinaTrajectories = geojsonData.features.filter(
                 feature => feature.properties.voyage === "May 2025 - China"
             );
 
@@ -87,10 +95,7 @@
 
         // Écouteurs d'événements pour les boutons
         document.getElementById('showAll').addEventListener('click', () => showAllTrajectories(geojsonData));
-        document.getElementById('startAnimation').addEventListener('click', () => animateChinaTrajectories(geojsonData));
-
-        // Variable globale pour stocker le GeoJSON chargé
-        let geojsonData;
+        document.getElementById('startAnimation').addEventListener('click', animateChinaTrajectories);
     </script>
 </body>
 </html>
