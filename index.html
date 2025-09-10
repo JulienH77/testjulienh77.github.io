@@ -4,7 +4,7 @@
     <title>Carte avec trajets animés</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <!-- Assure-toi que leaflet.motion.min.js est bien chargé -->
+    <!-- Leaflet.motion (assure-toi que le chemin est correct) -->
     <script src="leaflet.motion.min.js"></script>
     <style>
         #map { height: 600px; margin-bottom: 10px; }
@@ -14,7 +14,7 @@
 <body>
     <div id="map"></div>
     <button id="showAll">Afficher tous les trajets</button>
-    <button id="startAnimation">Animer "May 2025 - China"</button>
+    <button id="animateAll">Animer tous les trajets</button>
 
     <script>
         // Initialisation de la carte avec OSM
@@ -35,14 +35,13 @@
         let geojsonData;
         // Variable pour stocker les couches GeoJSON
         let allLayers = L.featureGroup().addTo(map);
-        let chinaLayers = L.featureGroup();
 
         // Chargement du GeoJSON externe
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
             .then(response => response.json())
             .then(data => {
                 console.log("GeoJSON chargé:", data);
-                geojsonData = data; // Stocke les données dans la variable globale
+                geojsonData = data;
                 showAllTrajectories(geojsonData);
             })
             .catch(error => console.error("Erreur de chargement du GeoJSON:", error));
@@ -61,26 +60,23 @@
             }).addTo(allLayers);
         }
 
-        // Fonction pour afficher et animer uniquement "May 2025 - China"
-        function animateChinaTrajectories() {
+        // Fonction pour animer tous les trajets
+        function animateAllTrajectories() {
             if (!geojsonData) {
                 alert("Le GeoJSON n'est pas encore chargé.");
                 return;
             }
-
-            allLayers.clearLayers();
-            chinaLayers.clearLayers();
-
-            const chinaTrajectories = geojsonData.features.filter(
-                feature => feature.properties.voyage === "May 2025 - China"
-            );
 
             if (typeof L.Motion === 'undefined') {
                 alert("La bibliothèque leaflet.motion n'est pas chargée. Vérifie le chemin vers leaflet.motion.min.js.");
                 return;
             }
 
-            chinaTrajectories.forEach(feature => {
+            // Nettoyer les couches existantes
+            allLayers.clearLayers();
+
+            // Parcourir chaque feature et animer
+            geojsonData.features.forEach(feature => {
                 if (feature.geometry.type === 'LineString') {
                     const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
                     const motion = L.Motion.polyline(
@@ -95,7 +91,7 @@
 
         // Écouteurs d'événements pour les boutons
         document.getElementById('showAll').addEventListener('click', () => showAllTrajectories(geojsonData));
-        document.getElementById('startAnimation').addEventListener('click', animateChinaTrajectories);
+        document.getElementById('animateAll').addEventListener('click', animateAllTrajectories);
     </script>
 </body>
 </html>
