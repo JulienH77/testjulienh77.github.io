@@ -48,12 +48,15 @@
 
             // Création et démarrage de l'animation avec L.Motion.Polyline
             try {
-                const motion = new L.Motion.Polyline(
-                    latlngs,
-                    { color: "#FF0000" },
-                    { duration: 5000, easing: L.Motion.Ease.linear }
-                ).addTo(map);
-                motion.start();
+                const motion = L.Motion.Polyline(latlngs, {
+                    color: "#FF0000"
+                }, {
+                    duration: 5000,
+                    easing: L.Motion.Ease.linear
+                }).addTo(map);
+
+                // Démarrer l'animation
+                L.Motion.Animate.start(motion);
                 console.log("Animation démarrée avec succès !");
             } catch (e) {
                 console.error("Erreur lors du démarrage de l'animation:", e);
