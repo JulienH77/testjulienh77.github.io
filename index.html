@@ -4,7 +4,7 @@
     <title>Test Animation Leaflet.Motion</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <!-- Version garantie de leaflet.motion depuis jsDelivr -->
+    <!-- Version garantie de leaflet.motion -->
     <script src="https://cdn.jsdelivr.net/gh/Igor-Vladyka/leaflet.motion@master/dist/leaflet.motion.min.js"></script>
     <style>
         #map { height: 600px; margin-bottom: 10px; }
@@ -25,7 +25,7 @@
         // Vérification du chargement de L.Motion
         window.onload = function() {
             if (typeof L.Motion === 'undefined') {
-                alert("La bibliothèque leaflet.motion n'est pas chargée. Vérifie la connexion internet ou le blocage des scripts.");
+                alert("La bibliothèque leaflet.motion n'est pas chargée.");
             } else {
                 console.log("L.Motion est chargé:", L.Motion);
             }
@@ -34,7 +34,7 @@
         // Bouton pour tester une animation simple
         document.getElementById('testAnimation').addEventListener('click', () => {
             if (typeof L.Motion === 'undefined') {
-                alert("L.Motion n'est pas disponible. Vérifie la console pour plus de détails.");
+                alert("L.Motion n'est pas disponible.");
                 return;
             }
 
@@ -46,9 +46,9 @@
                 L.latLng(48.8589, 2.3472)
             ];
 
-            // Création et démarrage de l'animation
+            // Création et démarrage de l'animation avec L.Motion.Polyline
             try {
-                const motion = L.Motion.polyline(
+                const motion = new L.Motion.Polyline(
                     latlngs,
                     { color: "#FF0000" },
                     { duration: 5000, easing: L.Motion.Ease.linear }
