@@ -2,10 +2,14 @@
 <html>
 <head>
     <title>Carte avec trajets animés</title>
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <!-- Assure-toi que le chemin vers leaflet.motion.min.js est correct -->
+    <!-- Leaflet.motion (à héberger ou utiliser un CDN si disponible) -->
     <script src="leaflet.motion.min.js"></script>
+    <!-- Font Awesome (optionnel, retire si non utilisé) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <style>
         #map { height: 600px; margin-bottom: 10px; }
         button { margin: 5px; padding: 8px 12px; cursor: pointer; }
@@ -64,7 +68,6 @@
             'avion': '#FF0000',
             'train': '#00FF00',
             'bateau': '#0000FF',
-            // Ajoute d'autres types si nécessaire
         };
 
         // Variable pour stocker les couches GeoJSON
@@ -87,8 +90,12 @@
 
         // Fonction pour afficher et animer uniquement "May 2025 - China"
         function animateChinaTrajectories() {
-            allLayers.clearLayers();
-            chinaLayers.clearLayers();
+            // Nettoyage des couches existantes
+            map.eachLayer(layer => {
+                if (layer instanceof L.GeoJSON || layer instanceof L.FeatureGroup) {
+                    map.removeLayer(layer);
+                }
+            });
 
             const chinaTrajectories = geojsonData.features.filter(
                 feature => feature.properties.voyage === "May 2025 - China"
@@ -101,17 +108,12 @@
 
             chinaTrajectories.forEach(feature => {
                 if (feature.geometry.type === 'LineString') {
-                    // Conversion des coordonnées [lng, lat] en L.LatLng
                     const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
-
-                    // Création de l'animation
                     const motion = L.Motion.polyline(
                         latlngs,
                         { color: colorByTrajet[feature.properties.trajet] || '#808080' },
                         { duration: 10000, easing: L.Motion.Ease.linear }
                     ).addTo(map);
-
-                    // Démarrage de l'animation
                     motion.start();
                 }
             });
