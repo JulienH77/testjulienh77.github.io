@@ -11,7 +11,6 @@
 </head>
 <body>
     <div id="map"></div>
-    <button id="showMay2025">Afficher "May 2025"</button>
     <button id="animateMay2025">Animer "May 2025"</button>
 
     <script>
@@ -30,36 +29,29 @@
             .then(data => {
                 console.log("GeoJSON chargé:", data);
 
-                // Bouton pour afficher les trajets de "May 2025"
-                document.getElementById('showMay2025').addEventListener('click', () => {
-                    // Supprimer les anciennes polylines
-                    may2025Polylines.forEach(polyline => map.removeLayer(polyline));
-                    may2025Polylines = [];
+                // Filtrer et afficher les trajets pour "May 2025"
+                const may2025Trajectories = data.features.filter(
+                    feature => feature.properties.voyage === "May 2025 - China"
+                );
 
-                    // Filtrer les trajets pour "May 2025"
-                    const may2025Trajectories = data.features.filter(
-                        feature => feature.properties.voyage === "May 2025 - China"
-                    );
+                if (may2025Trajectories.length === 0) {
+                    alert("Aucun trajet trouvé pour 'May 2025 - China'.");
+                    return;
+                }
 
-                    if (may2025Trajectories.length === 0) {
-                        alert("Aucun trajet trouvé pour 'May 2025 - China'.");
-                        return;
+                // Afficher chaque trajet
+                may2025Trajectories.forEach(feature => {
+                    if (feature.geometry.type === 'LineString') {
+                        const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
+                        const polyline = L.polyline(latlngs, { color: '#FF0000', weight: 3 }).addTo(map);
+                        may2025Polylines.push(polyline);
                     }
-
-                    // Afficher chaque trajet
-                    may2025Trajectories.forEach(feature => {
-                        if (feature.geometry.type === 'LineString') {
-                            const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
-                            const polyline = L.polyline(latlngs, { color: '#FF0000', weight: 3 }).addTo(map);
-                            may2025Polylines.push(polyline);
-                        }
-                    });
                 });
 
                 // Bouton pour animer les trajets de "May 2025"
                 document.getElementById('animateMay2025').addEventListener('click', () => {
                     if (may2025Polylines.length === 0) {
-                        alert("Aucun trajet de 'May 2025' n'est actuellement affiché. Cliquez d'abord sur 'Afficher May 2025'.");
+                        alert("Aucun trajet de 'May 2025' n'est disponible.");
                         return;
                     }
 
