@@ -4,8 +4,8 @@
     <title>Test Animation Leaflet.Motion</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <!-- Version garantie de leaflet.motion -->
-    <script src="https://cdn.jsdelivr.net/gh/Igor-Vladyka/leaflet.motion@master/dist/leaflet.motion.min.js"></script>
+    <!-- Utilisation d'une version locale de leaflet.motion -->
+    <script src="leaflet.motion.min.js"></script>
     <style>
         #map { height: 600px; margin-bottom: 10px; }
         button { margin: 5px; padding: 8px 12px; cursor: pointer; }
@@ -25,7 +25,7 @@
         // Vérification du chargement de L.Motion
         window.onload = function() {
             if (typeof L.Motion === 'undefined') {
-                alert("La bibliothèque leaflet.motion n'est pas chargée.");
+                alert("La bibliothèque leaflet.motion n'est pas chargée. Vérifie le chemin du fichier.");
             } else {
                 console.log("L.Motion est chargé:", L.Motion);
             }
@@ -46,17 +46,16 @@
                 L.latLng(48.8589, 2.3472)
             ];
 
-            // Création et démarrage de l'animation avec L.Motion.Polyline
+            // Création et démarrage de l'animation
             try {
-                const motion = L.Motion.Polyline(latlngs, {
+                const motion = new L.Motion.Polyline(latlngs, {
                     color: "#FF0000"
-                }, {
-                    duration: 5000,
-                    easing: L.Motion.Ease.linear
-                }).addTo(map);
+                });
+
+                motion.addTo(map);
 
                 // Démarrer l'animation
-                L.Motion.Animate.start(motion);
+                motion.play();
                 console.log("Animation démarrée avec succès !");
             } catch (e) {
                 console.error("Erreur lors du démarrage de l'animation:", e);
