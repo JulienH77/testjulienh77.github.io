@@ -41,7 +41,7 @@
         }
 
         // Fonction pour animer une polyline
-        function animatePolyline(latlngs, color, duration = 5000) {
+        function animatePolyline(latlngs, color, duration = 3000, onComplete) {
             const polyline = L.polyline([latlngs[0]], { color: color, weight: 4 }).addTo(map);
             activePolylines.push(polyline);
 
@@ -66,6 +66,8 @@
                 polyline.setLatLngs(points);
                 if (progress < 1) {
                     requestAnimationFrame(animate);
+                } else if (onComplete) {
+                    onComplete();
                 }
             }
             requestAnimationFrame(animate);
@@ -117,8 +119,12 @@
                     // Trie les features par ordre de "id"
                     const sortedFeatures = data.features.sort((a, b) => a.properties.id - b.properties.id);
 
-                    // Animation de chaque feature avec une couleur selon "trajet"
-                    sortedFeatures.forEach(feature => {
+                    // Animation séquentielle de chaque feature
+                    let currentIndex = 0;
+                    function animateNextFeature() {
+                        if (currentIndex >= sortedFeatures.length) return;
+
+                        const feature = sortedFeatures[currentIndex];
                         if (feature.geometry.type === 'MultiLineString') {
                             const lineStrings = extractLineStrings(feature.geometry);
                             const trajet = feature.properties.trajet;
@@ -129,9 +135,31 @@
                                 case 'bateau': color = '#0000FF'; break;
                                 default: color = '#808080';
                             }
-                            lineStrings.forEach(latlngs => animatePolyline(latlngs, color));
+
+                            // Anime chaque segment de la feature
+                            let segmentIndex = 0;
+                            function animateNextSegment() {
+                                if (segmentIndex >= lineStrings.length) {
+                                    currentIndex++;
+                                    animateNextFeature();
+                                    return;
+                                }
+
+                                const latlngs = lineStrings[segmentIndex];
+                                animatePolyline(latlngs, color, 3000, () => {
+                                    segmentIndex++;
+                                    animateNextSegment();
+                                });
+                            }
+
+                            animateNextSegment();
+                        } else {
+                            currentIndex++;
+                            animateNextFeature();
                         }
-                    });
+                    }
+
+                    animateNextFeature();
                 });
             })
             .catch(error => {
