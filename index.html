@@ -4,7 +4,7 @@
     <title>Carte avec trajets animés</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <!-- Leaflet.motion (assure-toi que le chemin est correct) -->
+    <!-- Assure-toi que leaflet.motion.min.js est bien chargé -->
     <script src="leaflet.motion.min.js"></script>
     <style>
         #map { height: 600px; margin-bottom: 10px; }
@@ -28,13 +28,12 @@
             'avion': '#FF0000',
             'train': '#00FF00',
             'bateau': '#0000FF',
-            // Ajoute d'autres types si nécessaire
         };
 
         // Variable globale pour stocker le GeoJSON chargé
         let geojsonData;
-        // Variable pour stocker les couches GeoJSON
-        let allLayers = L.featureGroup().addTo(map);
+        // Variable pour stocker les couches GeoJSON statiques
+        let staticLayers = L.featureGroup().addTo(map);
 
         // Chargement du GeoJSON externe
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
@@ -46,9 +45,9 @@
             })
             .catch(error => console.error("Erreur de chargement du GeoJSON:", error));
 
-        // Fonction pour afficher tous les trajets
+        // Fonction pour afficher tous les trajets (statiques)
         function showAllTrajectories(geojson) {
-            allLayers.clearLayers();
+            staticLayers.clearLayers();
             L.geoJSON(geojson, {
                 style: function(feature) {
                     return {
@@ -57,7 +56,7 @@
                         opacity: 0.7
                     };
                 }
-            }).addTo(allLayers);
+            }).addTo(staticLayers);
         }
 
         // Fonction pour animer tous les trajets
@@ -72,13 +71,14 @@
                 return;
             }
 
-            // Nettoyer les couches existantes
-            allLayers.clearLayers();
+            // Effacer les couches statiques
+            staticLayers.clearLayers();
 
             // Parcourir chaque feature et animer
             geojsonData.features.forEach(feature => {
                 if (feature.geometry.type === 'LineString') {
                     const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
+                    // Créer et démarrer l'animation
                     const motion = L.Motion.polyline(
                         latlngs,
                         { color: colorByTrajet[feature.properties.trajet] || '#808080' },
