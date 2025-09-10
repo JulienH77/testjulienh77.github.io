@@ -7,20 +7,24 @@
     <style>
         #map { height: 600px; margin-bottom: 10px; }
         button { margin: 5px; padding: 8px 12px; cursor: pointer; }
+        #log { margin-top: 10px; color: #666; font-family: monospace; }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <button id="testAnimation">Tester une animation fluide</button>
+    <div id="log">Chargement du GeoJSON...</div>
+
     <script>
         // Initialisation de la carte avec OSM
-        const map = L.map('map').setView([48.8566, 2.3522], 5);
+        const map = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
         // Variable pour stocker les polylines actives
         let activePolylines = [];
+        let geoJsonData = null;
 
         // Fonction pour supprimer toutes les polylines actives
         function clearActivePolylines() {
@@ -61,8 +65,29 @@
 
         // Chargement du fichier GeoJSON
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Erreur HTTP ! statut : ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                geoJsonData = data;
+                document.getElementById('log').textContent = `GeoJSON chargé : ${data.features.length} entités.`;
+
+                // Centrer la carte sur les données
+                const bounds = [];
+                data.features.forEach(feature => {
+                    if (feature.geometry.type === 'LineString') {
+                        feature.geometry.coordinates.forEach(coord => {
+                            bounds.push([coord[1], coord[0]]);
+                        });
+                    }
+                });
+                if (bounds.length > 0) {
+                    map.fitBounds(bounds);
+                }
+
                 // Bouton pour tester une animation fluide
                 document.getElementById('testAnimation').addEventListener('click', () => {
                     clearActivePolylines(); // Supprime les anciens tracés
@@ -72,20 +97,25 @@
 
                     // Animation de chaque feature avec une couleur selon "trajet"
                     sortedFeatures.forEach(feature => {
-                        const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
-                        const trajet = feature.properties.trajet;
-                        let color;
-                        switch (trajet) {
-                            case 'avion': color = '#FF0000'; break;
-                            case 'train': color = '#00FF00'; break;
-                            case 'bateau': color = '#0000FF'; break;
-                            default: color = '#808080'; // Gris par défaut
+                        if (feature.geometry.type === 'LineString') {
+                            const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
+                            const trajet = feature.properties.trajet;
+                            let color;
+                            switch (trajet) {
+                                case 'avion': color = '#FF0000'; break;
+                                case 'train': color = '#00FF00'; break;
+                                case 'bateau': color = '#0000FF'; break;
+                                default: color = '#808080'; // Gris par défaut
+                            }
+                            animatePolyline(latlngs, color);
                         }
-                        animatePolyline(latlngs, color);
                     });
                 });
             })
-            .catch(error => console.error('Erreur de chargement du GeoJSON:', error));
+            .catch(error => {
+                document.getElementById('log').textContent = `Erreur : ${error.message}`;
+                console.error('Erreur de chargement du GeoJSON:', error);
+            });
     </script>
 </body>
 </html>
