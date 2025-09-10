@@ -1,183 +1,105 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Animation Fluide de Polyline avec Leaflet</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <title>Animation des trajets avec L.Motion</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.motion/dist/leaflet.motion.min.js"></script>
     <style>
-        #map { height: 600px; margin-bottom: 10px; }
-        button { margin: 5px; padding: 8px 12px; cursor: pointer; }
-        #log { margin-top: 10px; color: #666; font-family: monospace; }
+        html, body, #map { width: 100%; height: 100%; margin: 0px; padding: 0px; }
+        button { position: absolute; z-index: 1000; top: 10px; left: 10px; }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <button id="testAnimation">Tester une animation fluide</button>
-    <button id="showStatic">Afficher les géométries en statique</button>
-    <div id="log">Chargement du GeoJSON...</div>
+    <button id="startAnimation">Démarrer l'animation</button>
 
     <script>
-        // Initialisation de la carte avec OSM
-        const map = L.map('map').setView([0, 0], 2);
+        // Initialisation de la carte
+        const map = L.map("map").setView([48.8566, 2.3522], 5);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Variables pour stocker les polylines
-        let activePolylines = [];
-        let staticPolylines = [];
-        let geoJsonData = null;
-
-        // Fonction pour supprimer toutes les polylines actives
-        function clearActivePolylines() {
-            activePolylines.forEach(polyline => map.removeLayer(polyline));
-            activePolylines = [];
-        }
-
-        // Fonction pour supprimer les polylines statiques
-        function clearStaticPolylines() {
-            staticPolylines.forEach(polyline => map.removeLayer(polyline));
-            staticPolylines = [];
-        }
-
-        // Fonction pour animer une polyline avec une durée fixe par entité
-        function animatePolyline(latlngs, color, durationMs, onComplete) {
-            const polyline = L.polyline([latlngs[0]], { color: color, weight: 4 }).addTo(map);
-            activePolylines.push(polyline);
-
-            let startTime;
-            function animate(currentTime) {
-                if (!startTime) startTime = currentTime;
-                const elapsed = currentTime - startTime;
-                const progress = Math.min(elapsed / durationMs, 1);
-                const numPoints = Math.floor(progress * (latlngs.length - 1)) + 1;
-                const points = latlngs.slice(0, numPoints);
-
-                if (numPoints < latlngs.length) {
-                    // Interpolation linéaire plus stable
-                    const startPoint = latlngs[numPoints - 1];
-                    const endPoint = latlngs[numPoints];
-                    const t = (progress * (latlngs.length - 1)) % 1;
-                    const interpolatedPoint = L.latLng(
-                        startPoint.lat + (endPoint.lat - startPoint.lat) * t,
-                        startPoint.lng + (endPoint.lng - startPoint.lng) * t
-                    );
-                    points.push(interpolatedPoint);
-                }
-                polyline.setLatLngs(points);
-                if (progress < 1) {
-                    requestAnimationFrame(animate);
-                } else if (onComplete) {
-                    onComplete();
-                }
-            }
-            requestAnimationFrame(animate);
-        }
-
-        // Fonction pour extraire les LineString d'un MultiLineString
-        function extractLineStrings(multiLineString) {
-            return multiLineString.coordinates.map(line => line.map(coord => L.latLng(coord[1], coord[0])));
-        }
-
-        // Chargement du fichier GeoJSON
+        // Chargement du GeoJSON
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Erreur HTTP ! statut : ${response.status}`);
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                geoJsonData = data;
-                document.getElementById('log').textContent = `GeoJSON chargé : ${data.features.length} entités.`;
+                // Trie les features par ordre de "id"
+                const sortedFeatures = data.features.sort((a, b) => a.properties.id - b.properties.id);
 
-                // Bouton pour afficher les géométries en statique
-                document.getElementById('showStatic').addEventListener('click', () => {
-                    clearStaticPolylines();
-                    clearActivePolylines();
+                // Crée une séquence d'animations
+                const seqGroup = L.motion.seq([]);
 
-                    const bounds = [];
-                    data.features.forEach(feature => {
-                        if (feature.geometry.type === 'MultiLineString') {
-                            const lineStrings = extractLineStrings(feature.geometry);
-                            const trajet = feature.properties.trajet;
-                            let color;
-                            switch (trajet) {
-                                case 'avion': color = '#FF0000'; break;
-                                case 'train': color = '#00FF00'; break;
-                                case 'bateau': color = '#0000FF'; break;
-                                case 'voiture': color = '#FFFF00'; break;
-                                case 'bus': color = '#FFA500'; break;
-                                default: color = '#808080';
-                            }
-                            lineStrings.forEach(latlngs => {
-                                bounds.push(...latlngs);
-                                const polyline = L.polyline(latlngs, { color: color, weight: 2 }).addTo(map);
-                                staticPolylines.push(polyline);
-                            });
+                // Pour chaque feature, ajoute une animation à la séquence
+                sortedFeatures.forEach(feature => {
+                    if (feature.geometry.type === 'MultiLineString') {
+                        const coordinates = feature.geometry.coordinates;
+                        const trajet = feature.properties.trajet;
+                        let color, iconHtml, duration = 12000; // 12 secondes par défaut
+
+                        // Définit la couleur et l'icône selon le type de trajet
+                        switch (trajet) {
+                            case 'avion':
+                                color = 'red';
+                                iconHtml = "<i class='fa fa-plane fa-2x' aria-hidden='true'></i>";
+                                break;
+                            case 'train':
+                                color = 'green';
+                                iconHtml = "<i class='fa fa-train fa-2x' aria-hidden='true'></i>";
+                                break;
+                            case 'bateau':
+                                color = 'blue';
+                                iconHtml = "<i class='fa fa-ship fa-2x' aria-hidden='true'></i>";
+                                break;
+                            case 'voiture':
+                                color = 'yellow';
+                                iconHtml = "<i class='fa fa-car fa-2x' aria-hidden='true'></i>";
+                                break;
+                            case 'bus':
+                                color = 'orange';
+                                iconHtml = "<i class='fa fa-bus fa-2x' aria-hidden='true'></i>";
+                                break;
+                            default:
+                                color = 'gray';
+                                iconHtml = "<i class='fa fa-question fa-2x' aria-hidden='true'></i>";
                         }
-                    });
 
-                    if (bounds.length > 0) {
-                        map.fitBounds(bounds);
+                        // Convertit les coordonnées en LatLng
+                        const latlngs = coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
+
+                        // Crée une polyline animée et l'ajoute à la séquence
+                        const motionPolyline = L.motion.polyline(
+                            latlngs,
+                            { color: color, weight: 4 },
+                            { easing: L.Motion.Ease.linear },
+                            {
+                                removeOnEnd: false,
+                                icon: L.divIcon({ html: iconHtml, iconSize: L.point(24, 24) })
+                            }
+                        ).motionDuration(duration);
+
+                        seqGroup.addLayer(motionPolyline);
                     }
                 });
 
-                // Bouton pour tester une animation fluide
-                document.getElementById('testAnimation').addEventListener('click', () => {
-                    clearActivePolylines();
+                // Ajoute la séquence à la carte
+                seqGroup.addTo(map);
 
-                    // Trie les features par ordre de "id"
-                    const sortedFeatures = data.features.sort((a, b) => a.properties.id - b.properties.id);
-                    const durationPerEntityMs = 12000; // 12 secondes par entité
-
-                    // Animation séquentielle de chaque feature
-                    let currentIndex = 0;
-                    function animateNextFeature() {
-                        if (currentIndex >= sortedFeatures.length) return;
-
-                        const feature = sortedFeatures[currentIndex];
-                        if (feature.geometry.type === 'MultiLineString') {
-                            const lineStrings = extractLineStrings(feature.geometry);
-                            const trajet = feature.properties.trajet;
-                            let color;
-                            switch (trajet) {
-                                case 'avion': color = '#FF0000'; break;
-                                case 'train': color = '#00FF00'; break;
-                                case 'bateau': color = '#0000FF'; break;
-                                case 'voiture': color = '#FFFF00'; break;
-                                case 'bus': color = '#FFA500'; break;
-                                default: color = '#808080';
-                            }
-
-                            // Anime chaque segment de la feature
-                            let segmentIndex = 0;
-                            function animateNextSegment() {
-                                if (segmentIndex >= lineStrings.length) {
-                                    currentIndex++;
-                                    animateNextFeature();
-                                    return;
-                                }
-
-                                const latlngs = lineStrings[segmentIndex];
-                                animatePolyline(latlngs, color, durationPerEntityMs / lineStrings.length, () => {
-                                    segmentIndex++;
-                                    animateNextSegment();
-                                });
-                            }
-
-                            animateNextSegment();
-                        } else {
-                            currentIndex++;
-                            animateNextFeature();
-                        }
-                    }
-
-                    animateNextFeature();
+                // Démarre l'animation au clic
+                document.getElementById('startAnimation').addEventListener('click', () => {
+                    seqGroup.motionStart();
                 });
+
+                // Démarre automatiquement après 1 seconde
+                setTimeout(() => {
+                    seqGroup.motionStart();
+                }, 1000);
             })
             .catch(error => {
-                document.getElementById('log').textContent = `Erreur : ${error.message}`;
                 console.error('Erreur de chargement du GeoJSON:', error);
             });
     </script>
