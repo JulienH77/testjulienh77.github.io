@@ -13,6 +13,7 @@
 <body>
     <div id="map"></div>
     <button id="testAnimation">Tester une animation fluide</button>
+    <button id="showStatic">Afficher les géométries en statique</button>
     <div id="log">Chargement du GeoJSON...</div>
 
     <script>
@@ -25,11 +26,18 @@
         // Variable pour stocker les polylines actives
         let activePolylines = [];
         let geoJsonData = null;
+        let staticPolylines = [];
 
         // Fonction pour supprimer toutes les polylines actives
         function clearActivePolylines() {
             activePolylines.forEach(polyline => map.removeLayer(polyline));
             activePolylines = [];
+        }
+
+        // Fonction pour supprimer les polylines statiques
+        function clearStaticPolylines() {
+            staticPolylines.forEach(polyline => map.removeLayer(polyline));
+            staticPolylines = [];
         }
 
         // Fonction pour animer une polyline
@@ -75,22 +83,29 @@
                 geoJsonData = data;
                 document.getElementById('log').textContent = `GeoJSON chargé : ${data.features.length} entités.`;
 
-                // Centrer la carte sur les données
-                const bounds = [];
-                data.features.forEach(feature => {
-                    if (feature.geometry.type === 'LineString') {
-                        feature.geometry.coordinates.forEach(coord => {
-                            bounds.push([coord[1], coord[0]]);
-                        });
+                // Bouton pour afficher les géométries en statique
+                document.getElementById('showStatic').addEventListener('click', () => {
+                    clearStaticPolylines();
+                    clearActivePolylines();
+
+                    const bounds = [];
+                    data.features.forEach(feature => {
+                        if (feature.geometry.type === 'LineString') {
+                            const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
+                            bounds.push(...latlngs);
+                            const polyline = L.polyline(latlngs, { color: '#808080', weight: 2 }).addTo(map);
+                            staticPolylines.push(polyline);
+                        }
+                    });
+
+                    if (bounds.length > 0) {
+                        map.fitBounds(bounds);
                     }
                 });
-                if (bounds.length > 0) {
-                    map.fitBounds(bounds);
-                }
 
                 // Bouton pour tester une animation fluide
                 document.getElementById('testAnimation').addEventListener('click', () => {
-                    clearActivePolylines(); // Supprime les anciens tracés
+                    clearActivePolylines();
 
                     // Trie les features par ordre de "id"
                     const sortedFeatures = data.features.sort((a, b) => a.properties.id - b.properties.id);
@@ -105,7 +120,7 @@
                                 case 'avion': color = '#FF0000'; break;
                                 case 'train': color = '#00FF00'; break;
                                 case 'bateau': color = '#0000FF'; break;
-                                default: color = '#808080'; // Gris par défaut
+                                default: color = '#808080';
                             }
                             animatePolyline(latlngs, color);
                         }
