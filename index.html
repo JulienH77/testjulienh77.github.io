@@ -40,8 +40,35 @@
             staticPolylines = [];
         }
 
-        // Fonction pour animer une polyline
-        function animatePolyline(latlngs, color, duration = 3000, onComplete) {
+        // Fonction pour calculer la longueur d'une polyline en km
+        function calculateLineLength(latlngs) {
+            let length = 0;
+            for (let i = 1; i < latlngs.length; i++) {
+                const p1 = latlngs[i - 1];
+                const p2 = latlngs[i];
+                const dx = p2.lng - p1.lng;
+                const dy = p2.lat - p1.lat;
+                // Approximation de la distance en km (formule de Haversine simplifiée)
+                const lat1 = p1.lat * Math.PI / 180;
+                const lat2 = p2.lat * Math.PI / 180;
+                const lon1 = p1.lng * Math.PI / 180;
+                const lon2 = p2.lng * Math.PI / 180;
+                const dLat = lat2 - lat1;
+                const dLon = lon2 - lon1;
+                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                          Math.cos(lat1) * Math.cos(lat2) *
+                          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                const R = 6371; // Rayon de la Terre en km
+                length += R * c;
+            }
+            return length;
+        }
+
+        // Fonction pour animer une polyline avec une vitesse constante (km/s)
+        function animatePolyline(latlngs, color, speedKmPerSecond, onComplete) {
+            const lengthKm = calculateLineLength(latlngs);
+            const durationMs = (lengthKm / speedKmPerSecond) * 1000; // Durée en ms
             const polyline = L.polyline([latlngs[0]], { color: color, weight: 4 }).addTo(map);
             activePolylines.push(polyline);
 
@@ -49,7 +76,7 @@
             function animate(currentTime) {
                 if (!startTime) startTime = currentTime;
                 const elapsed = currentTime - startTime;
-                const progress = Math.min(elapsed / duration, 1);
+                const progress = Math.min(elapsed / durationMs, 1);
                 const numPoints = Math.floor(progress * (latlngs.length - 1)) + 1;
                 const partialProgress = (progress * (latlngs.length - 1)) % 1;
                 const points = latlngs.slice(0, numPoints);
@@ -118,6 +145,7 @@
 
                     // Trie les features par ordre de "id"
                     const sortedFeatures = data.features.sort((a, b) => a.properties.id - b.properties.id);
+                    const speedKmPerSecond = 30; // Vitesse constante en km/s
 
                     // Animation séquentielle de chaque feature
                     let currentIndex = 0;
@@ -146,7 +174,7 @@
                                 }
 
                                 const latlngs = lineStrings[segmentIndex];
-                                animatePolyline(latlngs, color, 3000, () => {
+                                animatePolyline(latlngs, color, speedKmPerSecond, () => {
                                     segmentIndex++;
                                     animateNextSegment();
                                 });
