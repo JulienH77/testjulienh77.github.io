@@ -23,10 +23,10 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Variable pour stocker les polylines actives
+        // Variables pour stocker les polylines
         let activePolylines = [];
-        let geoJsonData = null;
         let staticPolylines = [];
+        let geoJsonData = null;
 
         // Fonction pour supprimer toutes les polylines actives
         function clearActivePolylines() {
@@ -71,6 +71,11 @@
             requestAnimationFrame(animate);
         }
 
+        // Fonction pour extraire les LineString d'un MultiLineString
+        function extractLineStrings(multiLineString) {
+            return multiLineString.coordinates.map(line => line.map(coord => L.latLng(coord[1], coord[0])));
+        }
+
         // Chargement du fichier GeoJSON
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
             .then(response => {
@@ -90,11 +95,13 @@
 
                     const bounds = [];
                     data.features.forEach(feature => {
-                        if (feature.geometry.type === 'LineString') {
-                            const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
-                            bounds.push(...latlngs);
-                            const polyline = L.polyline(latlngs, { color: '#808080', weight: 2 }).addTo(map);
-                            staticPolylines.push(polyline);
+                        if (feature.geometry.type === 'MultiLineString') {
+                            const lineStrings = extractLineStrings(feature.geometry);
+                            lineStrings.forEach(latlngs => {
+                                bounds.push(...latlngs);
+                                const polyline = L.polyline(latlngs, { color: '#808080', weight: 2 }).addTo(map);
+                                staticPolylines.push(polyline);
+                            });
                         }
                     });
 
@@ -112,8 +119,8 @@
 
                     // Animation de chaque feature avec une couleur selon "trajet"
                     sortedFeatures.forEach(feature => {
-                        if (feature.geometry.type === 'LineString') {
-                            const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
+                        if (feature.geometry.type === 'MultiLineString') {
+                            const lineStrings = extractLineStrings(feature.geometry);
                             const trajet = feature.properties.trajet;
                             let color;
                             switch (trajet) {
@@ -122,7 +129,7 @@
                                 case 'bateau': color = '#0000FF'; break;
                                 default: color = '#808080';
                             }
-                            animatePolyline(latlngs, color);
+                            lineStrings.forEach(latlngs => animatePolyline(latlngs, color));
                         }
                     });
                 });
