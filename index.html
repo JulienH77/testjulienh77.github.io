@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Animation Fluide de Polyline avec GeoJSON</title>
+    <title>Animation des trajets de Mai 2025</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <style>
@@ -20,8 +20,8 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Variable pour stocker la polyline animée
-        let animatedPolyline = null;
+        // Variable pour stocker les polylines animées
+        let animatedPolylines = [];
 
         // Chargement du GeoJSON externe
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
@@ -36,8 +36,14 @@
                         feature => feature.properties.voyage === "May 2025 - China"
                     );
 
-                    // Trier les trajets par ID (si disponible)
-                    may2025Trajectories.sort((a, b) => a.id - b.id);
+                    if (may2025Trajectories.length === 0) {
+                        alert("Aucun trajet trouvé pour 'May 2025 - China'.");
+                        return;
+                    }
+
+                    // Supprimer les anciennes polylines
+                    animatedPolylines.forEach(polyline => map.removeLayer(polyline));
+                    animatedPolylines = [];
 
                     // Animer chaque trajet
                     may2025Trajectories.forEach((feature, index) => {
@@ -53,15 +59,11 @@
         function animateTrajectory(feature) {
             if (feature.geometry.type !== 'LineString') return;
 
-            // Supprimer l'ancienne polyline si elle existe
-            if (animatedPolyline) {
-                map.removeLayer(animatedPolyline);
-            }
-
             const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
 
             // Création d'une polyline vide
-            animatedPolyline = L.polyline([latlngs[0]], { color: '#FF0000', weight: 3 }).addTo(map);
+            const polyline = L.polyline([latlngs[0]], { color: '#FF0000', weight: 3 }).addTo(map);
+            animatedPolylines.push(polyline);
 
             // Animation fluide
             let startTime;
@@ -86,7 +88,7 @@
                     points.push(interpolatedPoint);
                 }
 
-                animatedPolyline.setLatLngs(points);
+                polyline.setLatLngs(points);
 
                 if (progress < 1) {
                     requestAnimationFrame(animate);
