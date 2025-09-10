@@ -4,7 +4,7 @@
     <title>Test Animation Leaflet.Motion</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <!-- Utilisation d'une version CDN de leaflet.motion si disponible -->
+    <!-- Version garantie de leaflet.motion depuis jsDelivr -->
     <script src="https://cdn.jsdelivr.net/gh/Igor-Vladyka/leaflet.motion@master/dist/leaflet.motion.min.js"></script>
     <style>
         #map { height: 600px; margin-bottom: 10px; }
@@ -22,10 +22,19 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
+        // Vérification du chargement de L.Motion
+        window.onload = function() {
+            if (typeof L.Motion === 'undefined') {
+                alert("La bibliothèque leaflet.motion n'est pas chargée. Vérifie la connexion internet ou le blocage des scripts.");
+            } else {
+                console.log("L.Motion est chargé:", L.Motion);
+            }
+        };
+
         // Bouton pour tester une animation simple
         document.getElementById('testAnimation').addEventListener('click', () => {
             if (typeof L.Motion === 'undefined') {
-                alert("La bibliothèque leaflet.motion n'est pas chargée. Vérifie le chemin.");
+                alert("L.Motion n'est pas disponible. Vérifie la console pour plus de détails.");
                 return;
             }
 
@@ -38,14 +47,18 @@
             ];
 
             // Création et démarrage de l'animation
-            const motion = L.Motion.polyline(
-                latlngs,
-                { color: "#FF0000" },
-                { duration: 5000, easing: L.Motion.Ease.linear }
-            ).addTo(map);
-
-            motion.start();
-            console.log("Animation démarrée !");
+            try {
+                const motion = L.Motion.polyline(
+                    latlngs,
+                    { color: "#FF0000" },
+                    { duration: 5000, easing: L.Motion.Ease.linear }
+                ).addTo(map);
+                motion.start();
+                console.log("Animation démarrée avec succès !");
+            } catch (e) {
+                console.error("Erreur lors du démarrage de l'animation:", e);
+                alert("Erreur lors du démarrage de l'animation. Voir la console pour plus de détails.");
+            }
         });
     </script>
 </body>
