@@ -12,6 +12,7 @@
 <body>
     <div id="map"></div>
     <button id="animateMay2025">Animer "May 2025"</button>
+    <div id="debug"></div>
 
     <script>
         // Initialisation de la carte avec OSM
@@ -29,13 +30,24 @@
             .then(data => {
                 console.log("GeoJSON chargé:", data);
 
+                // Afficher les propriétés de quelques features pour débogage
+                const debugDiv = document.getElementById('debug');
+                data.features.slice(0, 5).forEach((feature, index) => {
+                    debugDiv.innerHTML += `<p>Feature ${index} properties: ${JSON.stringify(feature.properties)}</p>`;
+                });
+
                 // Filtrer et afficher les trajets pour "May 2025"
                 const may2025Trajectories = data.features.filter(
-                    feature => feature.properties.voyage === "May 2025 - China"
+                    feature => {
+                        // Vérifions toutes les propriétés pour trouver celle qui correspond à "May 2025"
+                        return Object.values(feature.properties).some(
+                            val => typeof val === 'string' && val.includes("May 2025")
+                        );
+                    }
                 );
 
                 if (may2025Trajectories.length === 0) {
-                    alert("Aucun trajet trouvé pour 'May 2025 - China'.");
+                    alert("Aucun trajet trouvé pour 'May 2025'. Vérifie les propriétés dans la section de débogage ci-dessous.");
                     return;
                 }
 
