@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Carte avec trajets animés</title>
+    <title>Test Animation Leaflet.Motion</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <!-- Assure-toi que leaflet.motion.min.js est bien chargé -->
-    <script src="leaflet.motion.min.js"></script>
+    <!-- Utilisation d'une version CDN de leaflet.motion si disponible -->
+    <script src="https://cdn.jsdelivr.net/gh/Igor-Vladyka/leaflet.motion@master/dist/leaflet.motion.min.js"></script>
     <style>
         #map { height: 600px; margin-bottom: 10px; }
         button { margin: 5px; padding: 8px 12px; cursor: pointer; }
@@ -13,85 +13,40 @@
 </head>
 <body>
     <div id="map"></div>
-    <button id="showAll">Afficher tous les trajets</button>
-    <button id="animateAll">Animer tous les trajets</button>
+    <button id="testAnimation">Tester une animation simple</button>
 
     <script>
         // Initialisation de la carte avec OSM
-        const map = L.map('map').setView([30, 105], 4);
+        const map = L.map('map').setView([48.8566, 2.3522], 12);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // Couleurs par type de transport
-        const colorByTrajet = {
-            'avion': '#FF0000',
-            'train': '#00FF00',
-            'bateau': '#0000FF',
-        };
-
-        // Variable globale pour stocker le GeoJSON chargé
-        let geojsonData;
-        // Variable pour stocker les couches GeoJSON statiques
-        let staticLayers = L.featureGroup().addTo(map);
-
-        // Chargement du GeoJSON externe
-        fetch('TRAJETS_ALL_vacances_wgs.geojson')
-            .then(response => response.json())
-            .then(data => {
-                console.log("GeoJSON chargé:", data);
-                geojsonData = data;
-                showAllTrajectories(geojsonData);
-            })
-            .catch(error => console.error("Erreur de chargement du GeoJSON:", error));
-
-        // Fonction pour afficher tous les trajets (statiques)
-        function showAllTrajectories(geojson) {
-            staticLayers.clearLayers();
-            L.geoJSON(geojson, {
-                style: function(feature) {
-                    return {
-                        color: colorByTrajet[feature.properties.trajet] || '#808080',
-                        weight: 3,
-                        opacity: 0.7
-                    };
-                }
-            }).addTo(staticLayers);
-        }
-
-        // Fonction pour animer tous les trajets
-        function animateAllTrajectories() {
-            if (!geojsonData) {
-                alert("Le GeoJSON n'est pas encore chargé.");
-                return;
-            }
-
+        // Bouton pour tester une animation simple
+        document.getElementById('testAnimation').addEventListener('click', () => {
             if (typeof L.Motion === 'undefined') {
-                alert("La bibliothèque leaflet.motion n'est pas chargée. Vérifie le chemin vers leaflet.motion.min.js.");
+                alert("La bibliothèque leaflet.motion n'est pas chargée. Vérifie le chemin.");
                 return;
             }
 
-            // Effacer les couches statiques
-            staticLayers.clearLayers();
+            // Coordonnées pour une ligne simple (Paris)
+            const latlngs = [
+                L.latLng(48.8566, 2.3522),
+                L.latLng(48.8534, 2.3488),
+                L.latLng(48.8584, 2.2945),
+                L.latLng(48.8589, 2.3472)
+            ];
 
-            // Parcourir chaque feature et animer
-            geojsonData.features.forEach(feature => {
-                if (feature.geometry.type === 'LineString') {
-                    const latlngs = feature.geometry.coordinates.map(coord => L.latLng(coord[1], coord[0]));
-                    // Créer et démarrer l'animation
-                    const motion = L.Motion.polyline(
-                        latlngs,
-                        { color: colorByTrajet[feature.properties.trajet] || '#808080' },
-                        { duration: 10000, easing: L.Motion.Ease.linear }
-                    ).addTo(map);
-                    motion.start();
-                }
-            });
-        }
+            // Création et démarrage de l'animation
+            const motion = L.Motion.polyline(
+                latlngs,
+                { color: "#FF0000" },
+                { duration: 5000, easing: L.Motion.Ease.linear }
+            ).addTo(map);
 
-        // Écouteurs d'événements pour les boutons
-        document.getElementById('showAll').addEventListener('click', () => showAllTrajectories(geojsonData));
-        document.getElementById('animateAll').addEventListener('click', animateAllTrajectories);
+            motion.start();
+            console.log("Animation démarrée !");
+        });
     </script>
 </body>
 </html>
