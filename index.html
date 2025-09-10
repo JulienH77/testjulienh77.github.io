@@ -4,7 +4,7 @@
     <title>Test Animation Leaflet.Motion</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <!-- Utilisation d'une version locale de leaflet.motion -->
+    <!-- Version locale de leaflet.motion -->
     <script src="leaflet.motion.min.js"></script>
     <style>
         #map { height: 600px; margin-bottom: 10px; }
@@ -46,16 +46,15 @@
                 L.latLng(48.8589, 2.3472)
             ];
 
-            // Création et démarrage de l'animation
+            // Création d'une polyline Leaflet classique
+            const polyline = L.polyline(latlngs, { color: '#FF0000' }).addTo(map);
+
+            // Animation de la polyline avec L.Motion.Animate
             try {
-                const motion = new L.Motion.Polyline(latlngs, {
-                    color: "#FF0000"
+                L.Motion.Animate.run(polyline, latlngs, {
+                    duration: 5000,
+                    easing: L.Motion.Ease.linear
                 });
-
-                motion.addTo(map);
-
-                // Démarrer l'animation
-                motion.play();
                 console.log("Animation démarrée avec succès !");
             } catch (e) {
                 console.error("Erreur lors du démarrage de l'animation:", e);
