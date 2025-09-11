@@ -27,17 +27,21 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             min-width: 300px;
         }
+        #info-banner .dates {
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
         #info-banner .duration {
-            font-size: 24px;
+            font-size: 20px;
             font-weight: bold;
             margin: 5px 0;
         }
         #info-banner .distance {
-            font-size: 16px;
+            font-size: 14px;
             color: #555;
         }
         #info-banner .recap {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
             color: #0066cc;
             margin-top: 10px;
@@ -53,7 +57,7 @@
         <button id="goButton">GO</button>
     </div>
     <div id="info-banner">
-        <div id="dates"></div>
+        <div class="dates" id="dates"></div>
         <div class="duration" id="duration"></div>
         <div class="distance" id="distance"></div>
         <div class="recap" id="recap"></div>
@@ -145,12 +149,22 @@
                     const lastDate = new Date(Math.max(...voyageFeatures.map(f => new Date(f.properties.date_fin))));
                     const totalDistance = voyageFeatures.reduce((sum, f) => sum + parseFloat(f.properties.distanceKM), 0);
 
-                    // Crée une séquence d'animations
-                    const seqGroup = L.motion.seq([]);
-                    currentAnimationGroup = seqGroup;
+                    // Variable pour suivre l'index actuel
+                    let currentIndex = 0;
 
-                    // Pour chaque feature, ajoute une animation à la séquence
-                    voyageFeatures.forEach((feature, index) => {
+                    // Fonction pour animer le trajet courant
+                    function animateCurrentTrajet() {
+                        if (currentIndex >= voyageFeatures.length) {
+                            // Tous les tronçons sont terminés, affiche les stats finales
+                            document.getElementById('dates').textContent = '';
+                            document.getElementById('duration').textContent = '';
+                            document.getElementById('distance').textContent = '';
+                            document.getElementById('recap').innerHTML =
+                                `Voyage du ${formatDate(firstDate)} au ${formatDate(lastDate)}<br>Distance totale : ${Math.round(totalDistance)} km`;
+                            return;
+                        }
+
+                        const feature = voyageFeatures[currentIndex];
                         const coordinates = feature.geometry.coordinates;
                         const trajet = feature.properties.trajet;
                         const color = getColor(trajet);
@@ -180,9 +194,12 @@
                         // Convertit les coordonnées en LatLng
                         const latlngs = coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
 
+                        // Zoom sur le trajet actuel
+                        fitBoundsForTrajet(latlngs);
+
                         // Ajoute une polyline statique fine pour les trajets précédents
-                        if (index > 0) {
-                            const previousFeature = voyageFeatures[index - 1];
+                        if (currentIndex > 0) {
+                            const previousFeature = voyageFeatures[currentIndex - 1];
                             const previousCoords = previousFeature.geometry.coordinates;
                             const previousLatLngs = previousCoords.flat().map(coord => L.latLng(coord[1], coord[0]));
                             const previousPolyline = L.polyline(previousLatLngs, { color: getColor(previousFeature.properties.trajet), weight: 2, opacity: 0.7 });
@@ -201,33 +218,30 @@
                             }
                         ).motionDuration(duration);
 
-                        // Ajoute la polyline animée à la séquence
-                        seqGroup.addLayer(motionPolyline);
+                        // Ajoute la polyline animée à la carte
+                        motionPolyline.addTo(map);
 
                         // Met à jour le bandeau d'informations pour ce trajet
-                        motionPolyline.on('motionstart', () => {
-                            document.getElementById('dates').innerHTML =
-                                `${formatDate(feature.properties.date_deb)} → ${formatDate(feature.properties.date_fin)}`;
-                            document.getElementById('duration').textContent = feature.properties.duree;
-                            document.getElementById('distance').textContent = `${feature.properties.distanceKM} km`;
-                            document.getElementById('recap').textContent = '';
-                        });
-                    });
+                        document.getElementById('dates').textContent =
+                            `${formatDate(feature.properties.date_deb)} → ${formatDate(feature.properties.date_fin)}`;
+                        document.getElementById('duration').textContent = feature.properties.duree;
+                        document.getElementById('distance').textContent = `${feature.properties.distanceKM} km`;
+                        document.getElementById('recap').textContent = '';
 
-                    // Ajoute la séquence à la carte
-                    seqGroup.addTo(map);
+                        // Démarre l'animation après un court délai pour le zoom
+                        setTimeout(() => {
+                            motionPolyline.motionStart();
+                        }, 500);
 
-                    // Démarre l'animation
-                    seqGroup.motionStart();
+                        // Passe au trajet suivant après la fin de l'animation
+                        setTimeout(() => {
+                            currentIndex++;
+                            animateCurrentTrajet();
+                        }, duration);
+                    }
 
-                    // Affiche le récapitulatif global à la fin de l'animation
-                    setTimeout(() => {
-                        document.getElementById('dates').innerHTML = '';
-                        document.getElementById('duration').textContent = '';
-                        document.getElementById('distance').textContent = '';
-                        document.getElementById('recap').innerHTML =
-                            `Voyage du ${formatDate(firstDate)} au ${formatDate(lastDate)}<br>Distance totale : ${Math.round(totalDistance)} km`;
-                    }, 12000 * voyageFeatures.length + 1000);
+                    // Démarre l'animation du premier trajet
+                    animateCurrentTrajet();
                 }
 
                 // Écouteur d'événement pour le bouton "GO"
