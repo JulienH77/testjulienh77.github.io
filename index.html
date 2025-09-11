@@ -16,13 +16,18 @@
 <body>
     <div id="map"></div>
     <button id="startAnimation">Démarrer l'animation</button>
-
     <script>
         // Initialisation de la carte
         const map = L.map("map").setView([48.8566, 2.3522], 5);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
+
+        // Fonction pour zoomer sur un trajet
+        function fitBoundsForTrajet(latlngs) {
+            const bounds = L.latLngBounds(latlngs);
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
 
         // Chargement du GeoJSON
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
@@ -35,7 +40,7 @@
                 const seqGroup = L.motion.seq([]);
 
                 // Pour chaque feature, ajoute une animation à la séquence
-                sortedFeatures.forEach(feature => {
+                sortedFeatures.forEach((feature, index) => {
                     if (feature.geometry.type === 'MultiLineString') {
                         const coordinates = feature.geometry.coordinates;
                         const trajet = feature.properties.trajet;
@@ -71,6 +76,11 @@
                         // Convertit les coordonnées en LatLng
                         const latlngs = coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
 
+                        // Ajoute une polyline statique pour les trajets déjà effectués
+                        if (index > 0) {
+                            L.polyline(latlngs, { color: color, weight: 2, opacity: 0.7 }).addTo(map);
+                        }
+
                         // Crée une polyline animée et l'ajoute à la séquence
                         const motionPolyline = L.motion.polyline(
                             latlngs,
@@ -81,6 +91,14 @@
                                 icon: L.divIcon({ html: iconHtml, iconSize: L.point(24, 24) })
                             }
                         ).motionDuration(duration);
+
+                        // Ajoute une pause et un zoom avant chaque trajet
+                        seqGroup.addAction((layer, callback) => {
+                            setTimeout(() => {
+                                fitBoundsForTrajet(latlngs);
+                                callback();
+                            }, 1000); // Pause de 1 seconde
+                        });
 
                         seqGroup.addLayer(motionPolyline);
                     }
