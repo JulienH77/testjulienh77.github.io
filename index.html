@@ -10,12 +10,18 @@
     <script src="https://cdn.jsdelivr.net/npm/leaflet.motion/dist/leaflet.motion.min.js"></script>
     <style>
         html, body, #map { width: 100%; height: 100%; margin: 0px; padding: 0px; }
-        button { position: absolute; z-index: 1000; top: 10px; left: 10px; }
+        #controls { position: absolute; z-index: 1000; top: 10px; left: 10px; background: white; padding: 10px; border-radius: 5px; }
+        select, button { margin-right: 5px; }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <button id="startAnimation">Démarrer l'animation</button>
+    <div id="controls">
+        <select id="voyageSelect">
+            <option value="">-- Choisir un voyage --</option>
+        </select>
+        <button id="goButton">GO</button>
+    </div>
     <script>
         // Initialisation de la carte
         const map = L.map("map").setView([48.8566, 2.3522], 5);
@@ -29,25 +35,45 @@
             map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
         }
 
+        // Stocke les polylines statiques (pour les trajets déjà effectués)
+        let staticPolylines = [];
+
         // Chargement du GeoJSON
         fetch('TRAJETS_ALL_vacances_wgs.geojson')
             .then(response => response.json())
             .then(data => {
-                // Trie les features par ordre de "id"
-                const sortedFeatures = data.features.sort((a, b) => a.properties.id - b.properties.id);
-                const features = sortedFeatures.filter(f => f.geometry.type === 'MultiLineString');
+                // Remplit la liste déroulante avec les valeurs uniques de "voyage"
+                const voyages = [...new Set(data.features.map(feature => feature.properties.voyage))];
+                const select = document.getElementById('voyageSelect');
+                voyages.forEach(voyage => {
+                    const option = document.createElement('option');
+                    option.value = voyage;
+                    option.textContent = voyage;
+                    select.appendChild(option);
+                });
 
-                // Stocke les polylines statiques (pour les trajets déjà effectués)
-                let staticPolylines = [];
+                // Fonction pour démarrer l'animation pour un voyage sélectionné
+                function startAnimationForVoyage(selectedVoyage) {
+                    // Efface les polylines statiques précédentes
+                    staticPolylines.forEach(polyline => map.removeLayer(polyline));
+                    staticPolylines = [];
 
-                // Fonction pour démarrer l'animation avec pauses et zooms
-                function startAnimationWithPauses() {
+                    // Filtre les features par voyage sélectionné
+                    const voyageFeatures = data.features
+                        .filter(feature => feature.properties.voyage === selectedVoyage && feature.geometry.type === 'MultiLineString')
+                        .sort((a, b) => a.properties.id - b.properties.id);
+
+                    if (voyageFeatures.length === 0) {
+                        alert("Aucun trajet trouvé pour ce voyage.");
+                        return;
+                    }
+
                     let currentIndex = 0;
 
                     function animateNext() {
-                        if (currentIndex >= features.length) return;
+                        if (currentIndex >= voyageFeatures.length) return;
 
-                        const feature = features[currentIndex];
+                        const feature = voyageFeatures[currentIndex];
                         const coordinates = feature.geometry.coordinates;
                         const trajet = feature.properties.trajet;
                         let color, iconHtml, duration = 12000;
@@ -87,7 +113,7 @@
 
                         // Ajoute une polyline statique fine pour les trajets précédents
                         if (currentIndex > 0) {
-                            const previousFeature = features[currentIndex - 1];
+                            const previousFeature = voyageFeatures[currentIndex - 1];
                             const previousCoords = previousFeature.geometry.coordinates;
                             const previousLatLngs = previousCoords.flat().map(coord => L.latLng(coord[1], coord[0]));
                             const previousPolyline = L.polyline(previousLatLngs, { color: getColor(previousFeature.properties.trajet), weight: 2, opacity: 0.7 });
@@ -136,15 +162,15 @@
                     }
                 }
 
-                // Démarre l'animation au clic
-                document.getElementById('startAnimation').addEventListener('click', () => {
-                    startAnimationWithPauses();
+                // Écouteur d'événement pour le bouton "GO"
+                document.getElementById('goButton').addEventListener('click', () => {
+                    const selectedVoyage = document.getElementById('voyageSelect').value;
+                    if (selectedVoyage) {
+                        startAnimationForVoyage(selectedVoyage);
+                    } else {
+                        alert("Veuillez sélectionner un voyage.");
+                    }
                 });
-
-                // Démarre automatiquement après 1 seconde
-                setTimeout(() => {
-                    startAnimationWithPauses();
-                }, 1000);
             })
             .catch(error => {
                 console.error('Erreur de chargement du GeoJSON:', error);
