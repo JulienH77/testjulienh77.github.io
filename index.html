@@ -26,7 +26,7 @@
         // Fonction pour zoomer sur un trajet
         function fitBoundsForTrajet(latlngs) {
             const bounds = L.latLngBounds(latlngs);
-            map.fitBounds(bounds, { padding: [50, 50] });
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
         }
 
         // Chargement du GeoJSON
@@ -35,16 +35,22 @@
             .then(data => {
                 // Trie les features par ordre de "id"
                 const sortedFeatures = data.features.sort((a, b) => a.properties.id - b.properties.id);
+                const features = sortedFeatures.filter(f => f.geometry.type === 'MultiLineString');
 
-                // Crée une séquence d'animations
-                const seqGroup = L.motion.seq([]);
+                // Stocke les polylines statiques (pour les trajets déjà effectués)
+                let staticPolylines = [];
 
-                // Pour chaque feature, ajoute une animation à la séquence
-                sortedFeatures.forEach((feature, index) => {
-                    if (feature.geometry.type === 'MultiLineString') {
+                // Fonction pour démarrer l'animation avec pauses et zooms
+                function startAnimationWithPauses() {
+                    let currentIndex = 0;
+
+                    function animateNext() {
+                        if (currentIndex >= features.length) return;
+
+                        const feature = features[currentIndex];
                         const coordinates = feature.geometry.coordinates;
                         const trajet = feature.properties.trajet;
-                        let color, iconHtml, duration = 12000; // 12 secondes par défaut
+                        let color, iconHtml, duration = 12000;
 
                         // Définit la couleur et l'icône selon le type de trajet
                         switch (trajet) {
@@ -76,12 +82,20 @@
                         // Convertit les coordonnées en LatLng
                         const latlngs = coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
 
-                        // Ajoute une polyline statique pour les trajets déjà effectués
-                        if (index > 0) {
-                            L.polyline(latlngs, { color: color, weight: 2, opacity: 0.7 }).addTo(map);
+                        // Zoom sur le trajet actuel
+                        fitBoundsForTrajet(latlngs);
+
+                        // Ajoute une polyline statique fine pour les trajets précédents
+                        if (currentIndex > 0) {
+                            const previousFeature = features[currentIndex - 1];
+                            const previousCoords = previousFeature.geometry.coordinates;
+                            const previousLatLngs = previousCoords.flat().map(coord => L.latLng(coord[1], coord[0]));
+                            const previousPolyline = L.polyline(previousLatLngs, { color: getColor(previousFeature.properties.trajet), weight: 2, opacity: 0.7 });
+                            staticPolylines.push(previousPolyline);
+                            previousPolyline.addTo(map);
                         }
 
-                        // Crée une polyline animée et l'ajoute à la séquence
+                        // Crée une polyline animée pour le trajet actuel (épaisse)
                         const motionPolyline = L.motion.polyline(
                             latlngs,
                             { color: color, weight: 4 },
@@ -92,37 +106,34 @@
                             }
                         ).motionDuration(duration);
 
-                        seqGroup.addLayer(motionPolyline);
-                    }
-                });
+                        // Ajoute la polyline animée à la carte
+                        motionPolyline.addTo(map);
 
-                // Ajoute la séquence à la carte
-                seqGroup.addTo(map);
-
-                // Fonction pour démarrer l'animation avec des pauses et des zooms
-                function startAnimationWithPauses() {
-                    let currentIndex = 0;
-                    const features = sortedFeatures.filter(f => f.geometry.type === 'MultiLineString');
-
-                    function animateNext() {
-                        if (currentIndex >= features.length) return;
-
-                        const feature = features[currentIndex];
-                        const coordinates = feature.geometry.coordinates;
-                        const latlngs = coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
-
-                        // Zoom sur le trajet actuel
-                        fitBoundsForTrajet(latlngs);
-
-                        // Démarre l'animation après 1 seconde
+                        // Démarre l'animation après un court délai pour le zoom
                         setTimeout(() => {
-                            seqGroup.motionStart(currentIndex);
+                            motionPolyline.motionStart();
+                        }, 500); // Délai court pour le zoom
+
+                        // Passe au trajet suivant après la fin de l'animation
+                        setTimeout(() => {
                             currentIndex++;
-                            setTimeout(animateNext, 12000); // Attend la fin de l'animation avant de passer au suivant
-                        }, 1000);
+                            animateNext();
+                        }, duration);
                     }
 
                     animateNext();
+                }
+
+                // Fonction pour obtenir la couleur selon le type de trajet
+                function getColor(trajet) {
+                    switch (trajet) {
+                        case 'avion': return 'red';
+                        case 'train': return 'green';
+                        case 'bateau': return 'blue';
+                        case 'voiture': return 'yellow';
+                        case 'bus': return 'orange';
+                        default: return 'gray';
+                    }
                 }
 
                 // Démarre l'animation au clic
