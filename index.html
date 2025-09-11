@@ -92,14 +92,6 @@
                             }
                         ).motionDuration(duration);
 
-                        // Ajoute une pause et un zoom avant chaque trajet
-                        seqGroup.addAction((layer, callback) => {
-                            setTimeout(() => {
-                                fitBoundsForTrajet(latlngs);
-                                callback();
-                            }, 1000); // Pause de 1 seconde
-                        });
-
                         seqGroup.addLayer(motionPolyline);
                     }
                 });
@@ -107,14 +99,40 @@
                 // Ajoute la séquence à la carte
                 seqGroup.addTo(map);
 
+                // Fonction pour démarrer l'animation avec des pauses et des zooms
+                function startAnimationWithPauses() {
+                    let currentIndex = 0;
+                    const features = sortedFeatures.filter(f => f.geometry.type === 'MultiLineString');
+
+                    function animateNext() {
+                        if (currentIndex >= features.length) return;
+
+                        const feature = features[currentIndex];
+                        const coordinates = feature.geometry.coordinates;
+                        const latlngs = coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
+
+                        // Zoom sur le trajet actuel
+                        fitBoundsForTrajet(latlngs);
+
+                        // Démarre l'animation après 1 seconde
+                        setTimeout(() => {
+                            seqGroup.motionStart(currentIndex);
+                            currentIndex++;
+                            setTimeout(animateNext, 12000); // Attend la fin de l'animation avant de passer au suivant
+                        }, 1000);
+                    }
+
+                    animateNext();
+                }
+
                 // Démarre l'animation au clic
                 document.getElementById('startAnimation').addEventListener('click', () => {
-                    seqGroup.motionStart();
+                    startAnimationWithPauses();
                 });
 
                 // Démarre automatiquement après 1 seconde
                 setTimeout(() => {
-                    seqGroup.motionStart();
+                    startAnimationWithPauses();
                 }, 1000);
             })
             .catch(error => {
