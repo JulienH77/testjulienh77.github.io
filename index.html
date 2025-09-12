@@ -152,7 +152,7 @@
         return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     }
     function getColor(trajet) {
-        const colors = { avion:'red', train:'green', bateau:'blue', voiture:'#f1c40f', bus:'orange' };
+        const colors = { avion:'#00dbc5', train:'#db0016', bus:'#dbc500', voiture:'#0016db', bateau:'#0084db' };
         return colors[trajet] || 'gray';
     }
     function getIconHtml(trajet) {
@@ -477,3 +477,4 @@
     </script>
 </body>
 </html>
+
