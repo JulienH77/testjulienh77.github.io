@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Animation des trajets avec L.Motion</title>
+    <title>Animation des trajets — lisse + progression colorée</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -9,78 +9,104 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <style>
         html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
-        #controls { position: absolute; z-index: 1000; top: 10px; left: 10px; background: white; padding: 10px; border-radius: 5px; }
+        #controls { position: absolute; z-index: 1100; top: 10px; left: 10px; background: white; padding: 10px; border-radius: 5px; }
         select, button { margin-right: 5px; }
         .leaflet-control-zoom { display: none !important; }
+
         #info-banner {
             position: absolute;
             top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(255, 255, 255, 0.9);
-            padding: 10px 20px;
-            border-radius: 5px;
-            z-index: 1000;
+            background: rgba(255,255,255,0.95);
+            padding: 10px 18px;
+            border-radius: 6px;
+            z-index: 1100;
             text-align: center;
             font-family: Arial, sans-serif;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-            min-width: 300px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            min-width: 320px;
         }
-        #info-banner .dates { font-size: 16px; margin-bottom: 5px; }
-        #info-banner .duration { font-size: 20px; font-weight: bold; margin: 5px 0; }
-        #info-banner .distance { font-size: 14px; color: #555; }
-        #info-banner .recap { font-size: 16px; font-weight: bold; color: #0066cc; margin-top: 10px; }
+        #info-banner .dates { font-size: 15px; margin-bottom: 4px; }
+        #info-banner .duration { font-size: 18px; font-weight: bold; margin: 4px 0; }
+        #info-banner .distance { font-size: 13px; color: #444; }
+        #info-banner .recap { font-size: 15px; font-weight: bold; color: #0066cc; margin-top: 8px; }
 
-        /* --- Barre de contrôle en bas --- */
+        /* Bas - contrôles et progression */
         #bottom-controls {
             position: absolute;
-            bottom: 40px;
+            bottom: 48px;
             left: 50%;
             transform: translateX(-50%);
+            z-index: 1200;
             display: flex;
             align-items: center;
-            gap: 15px;
-            z-index: 1000;
+            gap: 10px;
+            font-family: Arial, sans-serif;
         }
         #bottom-controls button {
             background: white;
             border: 1px solid #ccc;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            border-radius: 6px;
+            padding: 8px 10px;
             cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
         }
+        #bottom-controls button.active { background: rgba(0,102,204,0.09); border-color: rgba(0,102,204,0.4); }
 
-        /* --- Barre de progression --- */
         #progress-container {
             position: absolute;
-            bottom: 10px;
+            bottom: 12px;
             left: 50%;
             transform: translateX(-50%);
             width: 33%;
-            height: 8px;
-            background: #eee;
-            border-radius: 4px;
+            min-width: 220px;
+            height: 12px;
+            background: #e9e9e9;
+            border-radius: 8px;
             overflow: hidden;
-            z-index: 1000;
+            z-index: 1200;
         }
-        .progress-bar {
+        /* conteneur qui contiendra segments colorés (remplis seulement pour la portion parcourue) */
+        .progress-fill {
             position: absolute;
-            top: 0;
-            left: 0;
+            top: 0; left: 0; height: 100%;
+            display: flex;
+            align-items: center;
             height: 100%;
-            width: 100%;
+            pointer-events: none;
         }
-        .progress-dot {
+        .progress-seg {
+            height: 100%;
+            width: 0%;
+            flex: none;
+        }
+        #progress-dot {
             position: absolute;
             top: 50%;
+            left: 0%;
             transform: translate(-50%, -50%);
-            width: 16px;
-            height: 16px;
-            background: black;
+            width: 18px; height: 18px;
             border-radius: 50%;
-            z-index: 2;
+            background: white;
+            border: 3px solid #0066cc;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+            z-index: 1300;
+            pointer-events: none;
+        }
+        #progress-labels {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            color: #333;
+            z-index: 1200;
+        }
+
+        @media (max-width: 600px) {
+            #progress-container { width: 60%; min-width: 160px; }
+            #info-banner { min-width: 220px; padding: 8px 12px; }
         }
     </style>
 </head>
@@ -102,162 +128,352 @@
     </div>
 
     <div id="bottom-controls">
-        <button id="slower"><i class="fa fa-minus"></i></button>
-        <button id="playPause"><i class="fa fa-play"></i></button>
-        <button id="faster"><i class="fa fa-plus"></i></button>
+        <button id="slower" title="Ralentir">-</button>
+        <button id="playPause" title="Lecture/Pause">⏸</button>
+        <button id="faster" title="Accélérer">+</button>
     </div>
 
-    <div id="progress-container">
-        <div class="progress-bar"></div>
-        <div class="progress-dot" id="progress-dot"></div>
+    <div id="progress-container" aria-hidden="false">
+        <div class="progress-fill" id="progress-fill"></div>
+        <div id="progress-dot"></div>
+        <div id="progress-labels"><span id="km-done">0 km</span> • <span id="km-remaining">0 km restants</span></div>
     </div>
 
     <script>
-        const map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
+    // Carte
+    const map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-        function formatDate(dateStr) {
-            const d = new Date(dateStr);
-            return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    // helpers
+    function formatDate(dateStr) {
+        const d = new Date(dateStr);
+        return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+    function getColor(trajet) {
+        const colors = { avion:'red', train:'green', bateau:'blue', voiture:'#f1c40f', bus:'orange' };
+        return colors[trajet] || 'gray';
+    }
+    function getIconHtml(trajet) {
+        const icons = { avion:"<i class='fa fa-plane fa-2x'></i>", train:"<i class='fa fa-train fa-2x'></i>", bateau:"<i class='fa fa-ship fa-2x'></i>", voiture:"<i class='fa fa-car fa-2x'></i>", bus:"<i class='fa fa-bus fa-2x'></i>" };
+        return icons[trajet] || "<i class='fa fa-question fa-2x'></i>";
+    }
+
+    // variables d'état
+    let dataGeo = null;
+    let voyageFeatures = [];
+    let totalDistance = 0; // km
+    let firstDate = null;
+    let lastDate = null;
+
+    let currentFeatureIndex = 0;
+    let currentSegment = null; // { latlngs, cumdist, metersTotal, trajet, feature }
+    let kmCompleted = 0; // km already fully completed
+    let currentStartTime = null;
+    let elapsedBeforePause = 0;
+    let isPlaying = true;
+    let rafId = null;
+    let movingMarker = null;
+    let partialLine = null;
+
+    // durée "normale" par tronçon = 12000 ms (on respecte la valeur que tu avais)
+    const BASE_DURATION = 12000;
+    let currentDuration = BASE_DURATION; // this will be divided by speedFactor
+    let speedFactor = 1; // >1 = faster, <1 = slower
+
+    // progress bar elements
+    const progressFill = document.getElementById('progress-fill');
+    const progressDot = document.getElementById('progress-dot');
+    const kmDoneEl = document.getElementById('km-done');
+    const kmRemEl = document.getElementById('km-remaining');
+
+    // compute cumulative distances along latlngs (meters)
+    function computeCumDist(latlngs) {
+        const cum = [0];
+        let s = 0;
+        for (let i=1;i<latlngs.length;i++){
+            const d = map.distance(latlngs[i-1], latlngs[i]);
+            s += d;
+            cum.push(s);
+        }
+        return cum;
+    }
+    // position along latlngs given fraction 0..1
+    function positionAlong(latlngs, cum, frac) {
+        if (frac <= 0) return latlngs[0];
+        if (frac >= 1) return latlngs[latlngs.length-1];
+        const target = frac * cum[cum.length-1];
+        // find interval
+        let i = 1;
+        while (i < cum.length && cum[i] < target) i++;
+        const prev = i-1;
+        const segLen = cum[i] - cum[prev];
+        const within = segLen === 0 ? 0 : ((target - cum[prev]) / segLen);
+        const lat = latlngs[prev].lat + (latlngs[i].lat - latlngs[prev].lat) * within;
+        const lng = latlngs[prev].lng + (latlngs[i].lng - latlngs[prev].lng) * within;
+        return L.latLng(lat, lng);
+    }
+
+    // Build invisible progress segments (one per feature) that will be filled progressively.
+    // Each .progress-seg has a flex-basis proportional to feature distance/totalDistance,
+    // but its width (actual filled %) is driven by inline style.
+    function buildProgressSegments() {
+        // clear
+        progressFill.innerHTML = '';
+        if (!voyageFeatures || voyageFeatures.length === 0 || totalDistance <= 0) return;
+        voyageFeatures.forEach(f => {
+            const seg = document.createElement('div');
+            seg.className = 'progress-seg';
+            // store metadata on element
+            seg.dataset.dist = parseFloat(f.properties.distanceKM) || 0;
+            seg.dataset.trajet = f.properties.trajet || '';
+            seg.style.width = '0%'; // start empty
+            // we compute flex-basis as percent share to reserve space
+            const sharePct = ((parseFloat(f.properties.distanceKM) || 0) / totalDistance) * 100;
+            seg.style.flexBasis = sharePct + '%';
+            seg.style.background = getColor(f.properties.trajet);
+            progressFill.appendChild(seg);
+        });
+    }
+
+    // update progress fill widths according to kmCompleted + currentSegment progress fraction
+    function updateProgressBarVisual(fracOfCurrentSegment = 0) {
+        // fracOfCurrentSegment in [0..1]
+        const segs = Array.from(progressFill.children);
+        if (!segs.length) return;
+        // compute cumulative percent filled
+        let filledKm = kmCompleted + (currentSegment ? (currentSegment.metersTotal/1000) * fracOfCurrentSegment : 0);
+        // for each segment set width = min(1, filledKm / segDist) * 100 but must account already used
+        let remainingFilled = filledKm;
+        segs.forEach(seg => {
+            const segDist = parseFloat(seg.dataset.dist) || 0;
+            if (remainingFilled <= 0) {
+                seg.style.width = '0%';
+            } else if (remainingFilled >= segDist) {
+                seg.style.width = '100%';
+                remainingFilled -= segDist;
+            } else {
+                // partial fill
+                const pct = (remainingFilled / segDist) * 100;
+                seg.style.width = pct + '%';
+                remainingFilled = 0;
+            }
+        });
+        // move dot and labels
+        const progressKm = filledKm;
+        const percent = Math.min(1, (totalDistance > 0 ? (progressKm / totalDistance) : 0));
+        progressDot.style.left = (percent * 100) + '%';
+        kmDoneEl.textContent = `${Math.round(progressKm)} km`;
+        kmRemEl.textContent = `${Math.max(0, Math.round(totalDistance - progressKm))} km restants`;
+    }
+
+    // Start animation for a given feature index
+    function startSegment(index) {
+        // cleanup previous
+        if (partialLine) { try { map.removeLayer(partialLine); } catch(e){} partialLine = null; }
+        if (movingMarker) { try { map.removeLayer(movingMarker); } catch(e){} movingMarker = null; }
+
+        const feat = voyageFeatures[index];
+        const coords = feat.geometry.coordinates.flat();
+        const latlngs = coords.map(c => L.latLng(c[1], c[0]));
+        const cum = computeCumDist(latlngs);
+        const metersTotal = cum[cum.length-1];
+        currentSegment = { latlngs, cum, metersTotal, trajet: feat.properties.trajet, feature: feat };
+
+        // zoom
+        const bounds = L.latLngBounds(latlngs);
+        map.fitBounds(bounds, { padding: [50,50], maxZoom: 12 });
+
+        // update banner for current fragment
+        document.getElementById('dates').textContent = `${formatDate(feat.properties.date_deb)} → ${formatDate(feat.properties.date_fin)}`;
+        document.getElementById('duration').textContent = feat.properties.duree || '';
+        document.getElementById('distance').textContent = `${feat.properties.distanceKM} km`;
+        document.getElementById('recap').textContent = '';
+
+        // start timing
+        currentStartTime = performance.now();
+        elapsedBeforePause = 0;
+        // ensure raf loop running
+        if (!rafId) rafId = requestAnimationFrame(loop);
+    }
+
+    // main loop
+    function loop(ts) {
+        rafId = null; // we'll set it again if needed
+        if (!currentSegment) {
+            // nothing in progress
+            return;
+        }
+        if (!isPlaying) {
+            // don't advance time but keep requesting frames to allow resume quickly
+            rafId = requestAnimationFrame(loop);
+            return;
+        }
+        const now = performance.now();
+        const elapsed = (currentStartTime !== null) ? (now - currentStartTime + elapsedBeforePause) : elapsedBeforePause;
+        // duration per segment is BASE_DURATION scaled by speedFactor (higher speedFactor => shorter time)
+        const effectiveDuration = BASE_DURATION / speedFactor;
+        let frac = Math.min(1, elapsed / effectiveDuration);
+
+        // fraction along current segment path (0..1)
+        const pos = positionAlong(currentSegment.latlngs, currentSegment.cum, frac);
+
+        // draw partial line
+        // build partial coordinates up to pos (interpolate)
+        let cum = currentSegment.cum;
+        const totalMeters = cum[cum.length-1];
+        const targetMeters = frac * totalMeters;
+        // find index
+        let idx = 0;
+        while (idx < cum.length && cum[idx] < targetMeters) idx++;
+        const part = currentSegment.latlngs.slice(0, Math.min(idx+1, currentSegment.latlngs.length)).map(x => L.latLng(x.lat, x.lng));
+        // replace last by pos
+        if (part.length) part[part.length-1] = pos;
+        // update partial polyline
+        if (partialLine) { try { map.removeLayer(partialLine); } catch(e){} partialLine = null; }
+        partialLine = L.polyline(part, { color: getColor(currentSegment.trajet), weight: 4 }).addTo(map);
+
+        // update moving marker
+        if (!movingMarker) {
+            movingMarker = L.marker(pos, { icon: L.divIcon({ html: getIconHtml(currentSegment.trajet), iconSize: L.point(24,24) }), interactive: false }).addTo(map);
+        } else {
+            movingMarker.setLatLng(pos);
         }
 
-        function getColor(trajet) {
-            const colors = { avion:'red', train:'green', bateau:'blue', voiture:'yellow', bus:'orange' };
-            return colors[trajet] || 'gray';
+        // update progress bar visuals
+        const currentSegKm = (currentSegment.metersTotal / 1000) || 0;
+        const fracSeg = frac;
+        updateProgressBarVisual(fracSeg);
+
+        // check end
+        if (frac >= 1 - 1e-6) {
+            // finalize current segment: convert partial to static thin line
+            try { map.removeLayer(partialLine); } catch(e) {}
+            partialLine = null;
+            const full = L.polyline(currentSegment.latlngs, { color: getColor(currentSegment.trajet), weight: 2, opacity: 0.85 }).addTo(map);
+            kmCompleted += currentSegKm;
+            // cleanup marker
+            if (movingMarker) { try { map.removeLayer(movingMarker); } catch(e){} movingMarker = null; }
+
+            // advance to next
+            currentSegment = null;
+            currentFeatureIndex++;
+            // if more segments -> start next
+            if (currentFeatureIndex < voyageFeatures.length) {
+                startSegment(currentFeatureIndex);
+            } else {
+                // finished whole voyage
+                // clear banner details for last segment
+                document.getElementById('dates').textContent = '';
+                document.getElementById('duration').textContent = '';
+                document.getElementById('distance').textContent = '';
+                document.getElementById('recap').innerHTML = `Voyage du ${formatDate(firstDate)} au ${formatDate(lastDate)}<br>Distance totale : ${Math.round(totalDistance)} km`;
+                // ensure progress full
+                updateProgressBarVisual(1);
+            }
+            // request next frame if needed (startSegment will request)
+            rafId = requestAnimationFrame(loop);
+            return;
         }
 
-        function getIconHtml(trajet) {
-            const icons = {
-                avion:"<i class='fa fa-plane fa-2x'></i>",
-                train:"<i class='fa fa-train fa-2x'></i>",
-                bateau:"<i class='fa fa-ship fa-2x'></i>",
-                voiture:"<i class='fa fa-car fa-2x'></i>",
-                bus:"<i class='fa fa-bus fa-2x'></i>"
-            };
-            return icons[trajet] || "<i class='fa fa-question fa-2x'></i>";
+        // continue
+        rafId = requestAnimationFrame(loop);
+    }
+
+    // Public controls
+    document.getElementById('slower').addEventListener('click', () => {
+        speedFactor = Math.max(0.25, speedFactor / 2); // divides speed (makes animation slower)
+    });
+    document.getElementById('faster').addEventListener('click', () => {
+        speedFactor = Math.min(8, speedFactor * 2); // multiplies speed
+    });
+    document.getElementById('playPause').addEventListener('click', () => {
+        // toggle playing
+        isPlaying = !isPlaying;
+        document.getElementById('playPause').textContent = isPlaying ? '⏸' : '▶';
+        if (isPlaying && currentSegment && currentStartTime === null) {
+            // resuming: set start so elapsed continues correctly
+            currentStartTime = performance.now();
         }
+        if (!isPlaying && currentSegment && currentStartTime !== null) {
+            // pausing: accumulate elapsedBeforePause and null start
+            const now = performance.now();
+            elapsedBeforePause += (now - currentStartTime);
+            currentStartTime = null;
+        }
+        // ensure loop running/resuming
+        if (!rafId) rafId = requestAnimationFrame(loop);
+    });
 
-        fetch('TRAJETS_ALL_vacances_wgs.geojson')
-            .then(r => r.json())
-            .then(data => {
-                const voyages = [...new Set(data.features.map(f => f.properties.voyage))];
-                const select = document.getElementById('voyageSelect');
-                voyages.forEach(v => {
-                    const opt = document.createElement('option');
-                    opt.value = v; opt.textContent = v;
-                    select.appendChild(opt);
-                });
-
-                let currentIndex = 0;
-                let kmCompleted = 0;
-                let totalDistance = 0;
-                let currentLine = null;
-                let rafId = null;
-                let isPlaying = false;
-                let speedFactor = 1;
-                let voyageFeatures = [];
-                let firstDate, lastDate;
-
-                const progressDot = document.getElementById('progress-dot');
-
-                function fitBoundsForTrajet(latlngs) {
-                    const bounds = L.latLngBounds(latlngs);
-                    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
-                }
-
-                function buildProgressBarGradient(features) {
-                    let current = 0;
-                    const stops = features.map(f => {
-                        const dist = parseFloat(f.properties.distanceKM);
-                        const color = getColor(f.properties.trajet);
-                        const start = (current / totalDistance) * 100;
-                        current += dist;
-                        const end = (current / totalDistance) * 100;
-                        return { color, start, end };
-                    });
-                    const gradient = stops.map(s => `${s.color} ${s.start}%, ${s.color} ${s.end}%`).join(', ');
-                    document.querySelector('.progress-bar').style.background = `linear-gradient(to right, ${gradient})`;
-                }
-
-                function animateCurrentTrajet() {
-                    if (currentIndex >= voyageFeatures.length) {
-                        isPlaying = false;
-                        document.getElementById('recap').innerHTML =
-                            `Voyage du ${formatDate(firstDate)} au ${formatDate(lastDate)}<br>` +
-                            `Distance totale : ${Math.round(totalDistance)} km`;
-                        return;
-                    }
-
-                    const feature = voyageFeatures[currentIndex];
-                    const latlngs = feature.geometry.coordinates.flat().map(c => L.latLng(c[1], c[0]));
-                    const color = getColor(feature.properties.trajet);
-                    const iconHtml = getIconHtml(feature.properties.trajet);
-                    fitBoundsForTrajet(latlngs);
-
-                    if (currentLine) map.removeLayer(currentLine);
-
-                    currentLine = L.polyline([latlngs[0]], { color, weight: 4 }).addTo(map);
-                    const marker = L.marker(latlngs[0], { icon: L.divIcon({ html: iconHtml, iconSize: L.point(24,24) }) }).addTo(map);
-
-                    const duration = 12000 / speedFactor;
-                    const distKM = parseFloat(feature.properties.distanceKM);
-
-                    document.getElementById('dates').textContent = `${formatDate(feature.properties.date_deb)} → ${formatDate(feature.properties.date_fin)}`;
-                    document.getElementById('duration').textContent = feature.properties.duree;
-                    document.getElementById('distance').textContent = `${distKM} km`;
-                    document.getElementById('recap').textContent = '';
-
-                    let startTime = null;
-
-                    function step(ts) {
-                        if (!startTime) startTime = ts;
-                        if (!isPlaying) {
-                            rafId = requestAnimationFrame(step);
-                            return;
-                        }
-                        const elapsed = (ts - startTime) * speedFactor;
-                        const progress = Math.min(elapsed / duration, 1);
-                        const idx = Math.floor(progress * (latlngs.length - 1));
-                        currentLine.setLatLngs(latlngs.slice(0, idx+1));
-                        marker.setLatLng(latlngs[idx]);
-                        const traveled = kmCompleted + distKM * progress;
-                        const pct = (traveled / totalDistance) * 100;
-                        progressDot.style.left = pct + '%';
-
-                        if (progress < 1) {
-                            rafId = requestAnimationFrame(step);
-                        } else {
-                            kmCompleted += distKM;
-                            currentIndex++;
-                            animateCurrentTrajet();
-                        }
-                    }
-                    rafId = requestAnimationFrame(step);
-                }
-
-                document.getElementById('goButton').addEventListener('click', () => {
-                    const selected = select.value;
-                    if (!selected) return alert('Veuillez sélectionner un voyage.');
-                    map.eachLayer(l => { if (!(l instanceof L.TileLayer)) map.removeLayer(l); });
-                    currentIndex = 0; kmCompleted = 0; isPlaying = true;
-                    voyageFeatures = data.features.filter(f => f.properties.voyage === selected && f.geometry.type === 'MultiLineString')
-                        .sort((a,b)=>a.properties.id-b.properties.id);
-                    totalDistance = voyageFeatures.reduce((s,f)=>s+parseFloat(f.properties.distanceKM),0);
-                    firstDate = new Date(Math.min(...voyageFeatures.map(f => new Date(f.properties.date_deb))));
-                    lastDate = new Date(Math.max(...voyageFeatures.map(f => new Date(f.properties.date_fin))));
-                    buildProgressBarGradient(voyageFeatures);
-                    animateCurrentTrajet();
-                });
-
-                document.getElementById('playPause').addEventListener('click', () => {
-                    isPlaying = !isPlaying;
-                    document.getElementById('playPause').innerHTML = isPlaying ? "<i class='fa fa-pause'></i>" : "<i class='fa fa-play'></i>";
-                });
-                document.getElementById('slower').addEventListener('click', () => speedFactor = Math.max(0.5, speedFactor - 0.5));
-                document.getElementById('faster').addEventListener('click', () => speedFactor = Math.min(5, speedFactor + 0.5));
+    // build voyage list and start logic
+    fetch('TRAJETS_ALL_vacances_wgs.geojson')
+        .then(r => r.json())
+        .then(json => {
+            dataGeo = json;
+            const voyages = [...new Set(json.features.map(f => f.properties.voyage))];
+            const select = document.getElementById('voyageSelect');
+            voyages.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v; opt.textContent = v;
+                select.appendChild(opt);
             });
+
+            document.getElementById('goButton').addEventListener('click', () => {
+                const sel = select.value;
+                if (!sel) { alert('Veuillez sélectionner un voyage.'); return; }
+
+                // reset map layers except tiles
+                map.eachLayer(l => { if (!(l instanceof L.TileLayer)) { try { map.removeLayer(l); } catch(e){} } });
+
+                // prepare features
+                voyageFeatures = dataGeo.features
+                    .filter(f => f.properties.voyage === sel && f.geometry.type === 'MultiLineString')
+                    .sort((a,b) => a.properties.id - b.properties.id);
+
+                if (!voyageFeatures.length) { alert('Aucun trajet pour ce voyage.'); return; }
+
+                // compute totals & dates
+                totalDistance = voyageFeatures.reduce((s,f) => s + (parseFloat(f.properties.distanceKM) || 0), 0);
+                firstDate = new Date(Math.min(...voyageFeatures.map(f => new Date(f.properties.date_deb))));
+                lastDate = new Date(Math.max(...voyageFeatures.map(f => new Date(f.properties.date_fin))));
+
+                // build progress segments (reserve space & colors but width 0)
+                buildProgressSegments();
+
+                // reset state
+                currentFeatureIndex = 0;
+                currentSegment = null;
+                kmCompleted = 0;
+                currentStartTime = null;
+                elapsedBeforePause = 0;
+                isPlaying = true;
+                speedFactor = 1;
+                document.getElementById('playPause').textContent = '⏸';
+                // clear banner recap
+                document.getElementById('recap').textContent = '';
+                // start first segment
+                startSegment(0);
+            });
+
+            // reset UI when changing voyage selection
+            select.addEventListener('change', () => {
+                // reset visuals & state
+                if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+                if (partialLine) { try { map.removeLayer(partialLine); } catch(e){} partialLine = null; }
+                if (movingMarker) { try { map.removeLayer(movingMarker); } catch(e){} movingMarker = null; }
+                kmCompleted = 0; currentSegment = null; voyageFeatures = []; totalDistance = 0;
+                progressFill.innerHTML = '';
+                progressDot.style.left = '0%';
+                kmDoneEl.textContent = '0 km';
+                kmRemEl.textContent = '0 km restants';
+                document.getElementById('dates').textContent = '';
+                document.getElementById('duration').textContent = '';
+                document.getElementById('distance').textContent = '';
+                document.getElementById('recap').textContent = '';
+            });
+        })
+        .catch(err => { console.error('Erreur chargement GeoJSON', err); alert('Erreur chargement GeoJSON (voir console)'); });
     </script>
 </body>
 </html>
