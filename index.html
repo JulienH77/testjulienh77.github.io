@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Animation des trajets avec L.Motion</title>
+    <title>Animation des trajets avec contrôle</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" />
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/leaflet.motion/dist/leaflet.motion.min.js"></script>
+    <!-- leaflet.motion peut rester chargé, on ne l'utilise plus pour l'animation principale -->
     <style>
         html, body, #map { width: 100%; height: 100%; margin: 0px; padding: 0px; }
         #controls { position: absolute; z-index: 1000; top: 10px; left: 10px; background: white; padding: 10px; border-radius: 5px; }
@@ -32,7 +32,7 @@
         #info-banner .distance { font-size: 14px; color: #555; }
         #info-banner .recap { font-size: 16px; font-weight: bold; color: #0066cc; margin-top: 10px; }
 
-        /* --- Ajouts : contrôles et barre de progression en bas --- */
+        /* Bas - contrôles et progression */
         #bottom-controls {
             position: absolute;
             bottom: 18px;
@@ -102,7 +102,6 @@
             text-align: center;
         }
 
-        /* Responsive */
         @media (max-width: 600px) {
             #progress-wrapper { width: 60%; min-width: 160px; }
         }
@@ -123,11 +122,10 @@
         <div class="recap" id="recap"></div>
     </div>
 
-    <!-- Ajout des contrôles en bas -->
-    <div id="bottom-controls" aria-hidden="false">
+    <div id="bottom-controls">
         <div id="playback-buttons" role="group" aria-label="Contrôles de lecture">
             <button id="slowBtn" title="Ralentir">«</button>
-            <button id="normalBtn" class="active" title="Vitesse normale">◼︎</button>
+            <button id="normalBtn" class="active" title="Vitesse normale">●</button>
             <button id="fastBtn" title="Accélérer">»</button>
             <button id="playPauseBtn" title="Pause / Lecture">⏸</button>
         </div>
@@ -140,235 +138,317 @@
         </div>
     </div>
 
-<script>
-    // Initialisation de la carte
-    const map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
+    <script>
+        // carte
+        const map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
 
-    // Variables globales
-    let staticPolylines = [];
-    let currentMotionPolyline = null;
-    let currentAnimationTimeout = null;
+        // variables globales
+        let dataGeo = null;
+        let staticPolylines = [];
+        let movingMarker = null;
+        let currentSegment = null; // objet contenant latlngs, distances, totalDistance, feature propriété
+        let rafId = null;
+        let isPlaying = true;
 
-    // --- Variables ajoutées ---
-    const ANIM = { slow: 24000, normal: 12000, fast: 6000 };
-    let currentAnimDuration = ANIM.normal;
-    let isPlaying = true;
-    let voyageTotalDistance = 0;
-    let kmCompleted = 0;
-    let currentSegmentDistance = 0;
-    let motionStartTimestamp = null;
-    let progressInterval = null;
-    let remainingTimeForSegment = null;
+        // vitesse en durée par tronçon (ms) - conserve valeur normale à 12000 comme avant
+        const DUR = { slow: 24000, normal: 12000, fast: 6000 };
+        let currentDuration = DUR.normal;
 
-    function updateProgressBar() {
-        if (!voyageTotalDistance || voyageTotalDistance <= 0) return;
-        let progressKm = kmCompleted;
-        if (motionStartTimestamp && currentSegmentDistance) {
-            const elapsed = Date.now() - motionStartTimestamp;
-            const frac = Math.min(1, elapsed / currentAnimDuration);
-            progressKm += frac * currentSegmentDistance;
+        // progression globale
+        let voyageTotalDistance = 0;
+        let kmCompleted = 0; // distance des tronçons complètement terminés
+        let currentStartTime = null; // timestamp du début du tronçon courant
+        let currentElapsedBeforePause = 0; // ms déjà écoulés avant pause
+        let currentSegmentDistance = 0; // km du tronçon courant
+        let currentFeatureIndex = 0;
+        let voyageFeatures = [];
+
+        // helper formatting
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth()+1).padStart(2, '0');
+            const year = date.getFullYear();
+            const hours = String(date.getHours()).padStart(2,'0');
+            const mins = String(date.getMinutes()).padStart(2,'0');
+            return `${day}/${month}/${year} ${hours}:${mins}`;
         }
-        const percent = Math.min(1, progressKm / voyageTotalDistance);
-        document.getElementById('progress-dot').style.left = (percent * 100) + '%';
-        document.getElementById('km-done').textContent = `${Math.round(progressKm)} km`;
-        document.getElementById('km-remaining').textContent = `${Math.max(0, Math.round(voyageTotalDistance - progressKm))} km restants`;
-    }
+        function getColor(trajet) {
+            const colors = { avion: 'red', train: 'green', bateau: 'blue', voiture: 'yellow', bus: 'orange' };
+            return colors[trajet] || 'gray';
+        }
+        function getIconHtml(trajet) {
+            const icons = {
+                'avion': "<i class='fa fa-plane fa-2x' aria-hidden='true'></i>",
+                'train': "<i class='fa fa-train fa-2x' aria-hidden='true'></i>",
+                'bateau': "<i class='fa fa-ship fa-2x' aria-hidden='true'></i>",
+                'voiture': "<i class='fa fa-car fa-2x' aria-hidden='true'></i>",
+                'bus': "<i class='fa fa-bus fa-2x' aria-hidden='true'></i>"
+            };
+            return icons[trajet] || "<i class='fa fa-question fa-2x' aria-hidden='true'></i>";
+        }
 
-    // Fonction pour zoomer sur un trajet
-    function fitBoundsForTrajet(latlngs) {
-        const bounds = L.latLngBounds(latlngs);
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
-    }
+        // calcule distances le long d'une liste de latlngs (en mètres)
+        function computeDistances(latlngs) {
+            const seg = [];
+            let cum = 0;
+            seg.push(0);
+            for (let i=1;i<latlngs.length;i++){
+                const d = map.distance(latlngs[i-1], latlngs[i]); // en mètres
+                cum += d;
+                seg.push(cum);
+            }
+            return seg; // tableau de distances cumulées (m)
+        }
 
-    function formatDate(dateStr) {
-        const date = new Date(dateStr);
-        return `${date.getDate().toString().padStart(2, '0')}/${
-            (date.getMonth()+1).toString().padStart(2, '0')}/${date.getFullYear()} ${
-            date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
-    }
+        // position le long de latlngs donné un fraction (0..1)
+        function positionAlong(latlngs, cumdist, frac) {
+            if (frac <= 0) return latlngs[0];
+            if (frac >= 1) return latlngs[latlngs.length-1];
+            const target = frac * cumdist[cumdist.length-1];
+            // trouve interval
+            let i=1;
+            while (i < cumdist.length && cumdist[i] < target) i++;
+            // i est le premier index où cumdist[i] >= target
+            const prev = i-1;
+            const segLen = cumdist[i] - cumdist[prev];
+            const within = (segLen === 0) ? 0 : (target - cumdist[prev]) / segLen;
+            const lat = latlngs[prev].lat + (latlngs[i].lat - latlngs[prev].lat) * within;
+            const lng = latlngs[prev].lng + (latlngs[i].lng - latlngs[prev].lng) * within;
+            return L.latLng(lat, lng);
+        }
 
-    function getColor(trajet) {
-        return { avion: 'red', train: 'green', bateau: 'blue', voiture: 'yellow', bus: 'orange' }[trajet] || 'gray';
-    }
+        // mise à jour barre progression (KM)
+        function updateProgressUI(fracOfCurrentSegment=0) {
+            const progressKm = kmCompleted + (currentSegmentDistance * fracOfCurrentSegment);
+            const percent = (voyageTotalDistance>0) ? Math.min(1, progressKm / voyageTotalDistance) : 0;
+            document.getElementById('progress-dot').style.left = (percent*100) + '%';
+            document.getElementById('km-done').textContent = `${Math.round(progressKm)} km`;
+            document.getElementById('km-remaining').textContent = `${Math.max(0, Math.round(voyageTotalDistance - progressKm))} km restants`;
+        }
 
-    fetch('TRAJETS_ALL_vacances_wgs.geojson')
-        .then(r => r.json())
-        .then(data => {
-            const voyages = [...new Set(data.features.map(f => f.properties.voyage))];
-            const select = document.getElementById('voyageSelect');
-            voyages.forEach(v => {
-                const o = document.createElement('option');
-                o.value = v; o.textContent = v;
-                select.appendChild(o);
-            });
+        // animation frame loop
+        function animateFrame() {
+            if (!currentSegment) return;
+            if (!isPlaying) { rafId = requestAnimationFrame(animateFrame); return; }
 
-            function startAnimationForVoyage(selectedVoyage) {
-                if (currentMotionPolyline) {
-                    try { currentMotionPolyline.motionStop(); } catch (e) {}
-                    clearTimeout(currentAnimationTimeout);
-                    clearInterval(progressInterval);
+            const now = performance.now();
+            const elapsed = (currentStartTime !== null) ? (now - currentStartTime + currentElapsedBeforePause) : currentElapsedBeforePause;
+            const frac = Math.min(1, elapsed / currentDuration);
+
+            // positionner le marker
+            const pos = positionAlong(currentSegment.latlngs, currentSegment.cumdist, frac);
+            if (!movingMarker) {
+                movingMarker = L.marker(pos, { icon: L.divIcon({ html: getIconHtml(currentSegment.trajet), iconSize: L.point(24,24) }), interactive: false });
+                movingMarker.addTo(map);
+            } else {
+                movingMarker.setLatLng(pos);
+            }
+
+            // mettre à jour la "trail" visuelle : on peut dessiner une polyline partielle
+            // Supprimer éventuelle polyline partielle précédente puis dessiner nouvelle
+            if (currentSegment.partialLine) { map.removeLayer(currentSegment.partialLine); currentSegment.partialLine = null; }
+            // construire latlngs jusqu'à la position actuelle
+            const cum = currentSegment.cumdist;
+            const totalMeters = cum[cum.length-1];
+            const targetMeters = frac * totalMeters;
+            // trouver index
+            let idx = 0;
+            while (idx < cum.length && cum[idx] < targetMeters) idx++;
+            // collect points up to idx
+            const part = currentSegment.latlngs.slice(0, idx+1);
+            // si pas exactement sur un point, remplacer dernier point par interpolated pos
+            if (idx < cum.length) {
+                part[part.length-1] = pos;
+            }
+            currentSegment.partialLine = L.polyline(part, { color: getColor(currentSegment.trajet), weight: 4 }).addTo(map);
+
+            // update UI progression
+            updateProgressUI(frac);
+
+            if (frac >= 1) {
+                // fin de tronçon : stabilise (ajoute polyline statique), incrémente kmCompleted et passe au suivant
+                if (movingMarker) { map.removeLayer(movingMarker); movingMarker = null; }
+                // retire partial line et la convertit en statique complète
+                if (currentSegment.partialLine) {
+                    map.removeLayer(currentSegment.partialLine);
+                    currentSegment.partialLine = null;
                 }
-                map.eachLayer(l => { if (!(l instanceof L.TileLayer)) map.removeLayer(l); });
-                staticPolylines = [];
+                const full = L.polyline(currentSegment.latlngs, { color: getColor(currentSegment.trajet), weight: 2, opacity: 0.8 }).addTo(map);
+                staticPolylines.push(full);
 
-                const voyageFeatures = data.features
-                    .filter(f => f.properties.voyage === selectedVoyage && f.geometry.type === 'MultiLineString')
-                    .sort((a, b) => a.properties.id - b.properties.id);
+                kmCompleted += currentSegmentDistance;
+                currentSegment = null;
+                currentFeatureIndex++;
+                currentStartTime = null;
+                currentElapsedBeforePause = 0;
 
-                if (!voyageFeatures.length) { alert("Aucun trajet trouvé."); return; }
-
-                const firstDate = new Date(Math.min(...voyageFeatures.map(f => new Date(f.properties.date_deb))));
-                const lastDate = new Date(Math.max(...voyageFeatures.map(f => new Date(f.properties.date_fin))));
-                voyageTotalDistance = voyageFeatures.reduce((s, f) => s + parseFloat(f.properties.distanceKM), 0);
-                kmCompleted = 0;
-
-                let currentIndex = 0;
-
-                function animateCurrentTrajet() {
-                    if (currentIndex >= voyageFeatures.length) {
-                        document.getElementById('recap').innerHTML =
-                            `Voyage du ${formatDate(firstDate)} au ${formatDate(lastDate)}<br>Distance totale : ${Math.round(voyageTotalDistance)} km`;
-                        kmCompleted = voyageTotalDistance;
-                        updateProgressBar();
-                        clearInterval(progressInterval);
-                        return;
-                    }
-
-                    const f = voyageFeatures[currentIndex];
-                    const latlngs = f.geometry.coordinates.flat().map(c => L.latLng(c[1], c[0]));
-                    const color = getColor(f.properties.trajet);
-                    const iconHtml = getIconHtml(f.properties.trajet);
-
-                    fitBoundsForTrajet(latlngs);
-
-                    if (currentIndex > 0) {
-                        const prevF = voyageFeatures[currentIndex-1];
-                        const prevLatLngs = prevF.geometry.coordinates.flat().map(c => L.latLng(c[1], c[0]));
-                        L.polyline(prevLatLngs, { color: getColor(prevF.properties.trajet), weight: 2, opacity: 0.7 }).addTo(map);
-                    }
-
-                    currentSegmentDistance = parseFloat(f.properties.distanceKM) || 0;
-
-                    if (currentMotionPolyline) try { currentMotionPolyline.motionStop(); } catch(e){}
-                    clearTimeout(currentAnimationTimeout);
-
-                    currentMotionPolyline = L.motion.polyline(
-                        latlngs,
-                        { color, weight: 4 },
-                        { easing: L.Motion.Ease.linear },
-                        { icon: L.divIcon({ html: iconHtml, iconSize: L.point(24,24) }) }
-                    ).motionDuration(currentAnimDuration);
-                    currentMotionPolyline.addTo(map);
-
-                    document.getElementById('dates').textContent = `${formatDate(f.properties.date_deb)} → ${formatDate(f.properties.date_fin)}`;
-                    document.getElementById('duration').textContent = f.properties.duree;
-                    document.getElementById('distance').textContent = `${f.properties.distanceKM} km`;
-                    document.getElementById('recap').textContent = '';
-
-                    setTimeout(() => {
-                        try {
-                            currentMotionPolyline.motionStart();
-                            motionStartTimestamp = Date.now();
-                            clearInterval(progressInterval);
-                            progressInterval = setInterval(updateProgressBar, 200);
-
-                            clearTimeout(currentAnimationTimeout);
-                            currentAnimationTimeout = setTimeout(() => {
-                                try { currentMotionPolyline.motionStop(); } catch(e){}
-                                kmCompleted += currentSegmentDistance;
-                                currentIndex++;
-                                motionStartTimestamp = null;
-                                animateCurrentTrajet();
-                            }, currentAnimDuration);
-
-                            isPlaying = true;
-                            updatePlayPauseUI();
-                        } catch(e) { console.error(e); }
-                    }, 500);
-                }
-
-                animateCurrentTrajet();
-            }
-
-            function getIconHtml(trajet) {
-                const icons = {
-                    avion:"<i class='fa fa-plane fa-2x'></i>",
-                    train:"<i class='fa fa-train fa-2x'></i>",
-                    bateau:"<i class='fa fa-ship fa-2x'></i>",
-                    voiture:"<i class='fa fa-car fa-2x'></i>",
-                    bus:"<i class='fa fa-bus fa-2x'></i>"
-                };
-                return icons[trajet] || "<i class='fa fa-question fa-2x'></i>";
-            }
-
-            document.getElementById('goButton').addEventListener('click', () => {
-                const v = document.getElementById('voyageSelect').value;
-                if (v) startAnimationForVoyage(v);
-                else alert("Sélectionnez un voyage.");
-            });
-
-            // --- Contrôles Play/Pause/Vitesse ---
-            const playPauseBtn = document.getElementById('playPauseBtn');
-            const slowBtn = document.getElementById('slowBtn');
-            const normalBtn = document.getElementById('normalBtn');
-            const fastBtn = document.getElementById('fastBtn');
-
-            function updatePlayPauseUI() {
-                playPauseBtn.textContent = isPlaying ? '⏸' : '▶';
-            }
-
-            playPauseBtn.addEventListener('click', () => {
-                if (!currentMotionPolyline) return;
-                if (isPlaying) {
-                    currentMotionPolyline.motionPause();
-                    const elapsed = Date.now() - motionStartTimestamp;
-                    remainingTimeForSegment = Math.max(0, currentAnimDuration - elapsed);
-                    clearTimeout(currentAnimationTimeout);
-                    clearInterval(progressInterval);
-                    isPlaying = false;
+                // si il reste des segments, on lance le suivant (si on est en lecture)
+                if (currentFeatureIndex < voyageFeatures.length) {
+                    startSegment(currentFeatureIndex);
                 } else {
-                    currentMotionPolyline.motionResume();
-                    motionStartTimestamp = Date.now() - (currentAnimDuration - remainingTimeForSegment);
-                    progressInterval = setInterval(updateProgressBar, 200);
-                    currentAnimationTimeout = setTimeout(() => {
-                        try { currentMotionPolyline.motionStop(); } catch(e){}
-                        kmCompleted += currentSegmentDistance;
-                    }, remainingTimeForSegment);
-                    isPlaying = true;
+                    // terminé
+                    document.getElementById('dates').textContent = '';
+                    document.getElementById('duration').textContent = '';
+                    document.getElementById('distance').textContent = '';
+                    // recap
+                    document.getElementById('recap').innerHTML = `Voyage terminé — distance totale : ${Math.round(voyageTotalDistance)} km`;
+                    updateProgressUI(1);
                 }
-                updatePlayPauseUI();
-            });
-
-            function changeSpeedTo(newDuration) {
-                if (!currentMotionPolyline || !motionStartTimestamp) {
-                    currentAnimDuration = newDuration;
-                } else {
-                    const elapsed = Date.now() - motionStartTimestamp;
-                    const frac = Math.min(1, elapsed / currentAnimDuration);
-                    currentAnimDuration = newDuration;
-                    currentMotionPolyline.motionDuration(newDuration);
-                    motionStartTimestamp = Date.now() - frac * newDuration;
-                    const remaining = newDuration * (1 - frac);
-                    clearTimeout(currentAnimationTimeout);
-                    currentAnimationTimeout = setTimeout(() => {
-                        try { currentMotionPolyline.motionStop(); } catch(e){}
-                        kmCompleted += currentSegmentDistance;
-                    }, remaining);
-                }
-                slowBtn.classList.toggle('active', newDuration === ANIM.slow);
-                normalBtn.classList.toggle('active', newDuration === ANIM.normal);
-                fastBtn.classList.toggle('active', newDuration === ANIM.fast);
             }
 
-            slowBtn.addEventListener('click', () => changeSpeedTo(ANIM.slow));
-            normalBtn.addEventListener('click', () => changeSpeedTo(ANIM.normal));
-            fastBtn.addEventListener('click', () => changeSpeedTo(ANIM.fast));
-            updatePlayPauseUI();
+            rafId = requestAnimationFrame(animateFrame);
+        }
+
+        // démarre un segment index i
+        function startSegment(i) {
+            // safety clear
+            if (currentSegment && currentSegment.partialLine) { map.removeLayer(currentSegment.partialLine); currentSegment.partialLine = null; }
+            if (movingMarker) { map.removeLayer(movingMarker); movingMarker = null; }
+            currentElapsedBeforePause = 0;
+            currentStartTime = performance.now();
+
+            const feat = voyageFeatures[i];
+            // flatten MultiLineString coordinates -> latlngs
+            const coords = feat.geometry.coordinates.flat();
+            const latlngs = coords.map(c => L.latLng(c[1], c[0]));
+            const cumdist = computeDistances(latlngs); // m
+            const meters = cumdist[cumdist.length-1];
+            currentSegmentDistance = (meters/1000) || 0;
+            currentSegment = {
+                latlngs, cumdist, trajec: feat.properties.trajet, trajet: feat.properties.trajet
+            };
+
+            // zoom sur segment
+            const bounds = L.latLngBounds(latlngs);
+            map.fitBounds(bounds, { padding: [50,50], maxZoom: 12 });
+
+            // update info banner
+            document.getElementById('dates').textContent = `${formatDate(feat.properties.date_deb)} → ${formatDate(feat.properties.date_fin)}`;
+            document.getElementById('duration').textContent = feat.properties.duree || '';
+            document.getElementById('distance').textContent = `${feat.properties.distanceKM} km`;
+            document.getElementById('recap').textContent = '';
+
+            // lancer/continuer la boucle
+            if (!rafId) rafId = requestAnimationFrame(animateFrame);
+        }
+
+        // gestion du voyage (filtrage, initialisation)
+        function startAnimationForVoyage(selectedVoyage) {
+            // nettoyage
+            if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+            if (movingMarker) { map.removeLayer(movingMarker); movingMarker = null; }
+            staticPolylines.forEach(pl => { try { map.removeLayer(pl); } catch(e){} });
+            staticPolylines = [];
+            kmCompleted = 0;
+            currentSegment = null;
+            currentFeatureIndex = 0;
+            document.getElementById('recap').textContent = '';
+
+            // filtre
+            voyageFeatures = dataGeo.features
+                .filter(f => f.properties.voyage === selectedVoyage && f.geometry.type === 'MultiLineString')
+                .sort((a,b) => a.properties.id - b.properties.id);
+
+            if (!voyageFeatures.length) { alert('Aucun trajet trouvé'); return; }
+
+            // calc global
+            voyageTotalDistance = voyageFeatures.reduce((s,f)=> s + parseFloat(f.properties.distanceKM || 0), 0);
+
+            // démarre premier
+            startSegment(0);
+        }
+
+        // gestion play/pause et vitesse
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const slowBtn = document.getElementById('slowBtn');
+        const normalBtn = document.getElementById('normalBtn');
+        const fastBtn = document.getElementById('fastBtn');
+
+        function setSpeed(modeDur) {
+            // change la durée totale par tronçon en conservant la fraction déjà parcourue
+            if (!currentSegment) {
+                currentDuration = modeDur;
+            } else {
+                // compute elapsed fraction so far:
+                const now = performance.now();
+                const elapsedSoFar = (currentStartTime !== null) ? (now - currentStartTime + currentElapsedBeforePause) : currentElapsedBeforePause;
+                const frac = Math.min(1, elapsedSoFar / currentDuration);
+                // set new duration and adjust start time / elapsedBeforePause so that frac remains same
+                currentDuration = modeDur;
+                currentStartTime = now - frac * currentDuration;
+                currentElapsedBeforePause = 0;
+            }
+            slowBtn.classList.toggle('active', modeDur === DUR.slow);
+            normalBtn.classList.toggle('active', modeDur === DUR.normal);
+            fastBtn.classList.toggle('active', modeDur === DUR.fast);
+        }
+
+        slowBtn.addEventListener('click', () => setSpeed(DUR.slow));
+        normalBtn.addEventListener('click', () => setSpeed(DUR.normal));
+        fastBtn.addEventListener('click', () => setSpeed(DUR.fast));
+
+        playPauseBtn.addEventListener('click', () => {
+            if (!currentSegment && currentFeatureIndex >= voyageFeatures.length) return; // rien à faire si tout fini
+            isPlaying = !isPlaying;
+            playPauseBtn.textContent = isPlaying ? '⏸' : '▶';
+            if (isPlaying) {
+                // reprise : on remet startTime pour que elapsed continue correctement
+                currentStartTime = performance.now();
+                // si on reprend alors qu'il n'y a pas de segment en cours mais qu'il reste des segments, on démarre le suivant
+                if (!currentSegment && currentFeatureIndex < voyageFeatures.length) {
+                    startSegment(currentFeatureIndex);
+                }
+            } else {
+                // pause : conserver elapsedBeforePause et stopper loop
+                if (currentStartTime !== null) {
+                    const now = performance.now();
+                    currentElapsedBeforePause += (now - currentStartTime);
+                }
+                currentStartTime = null;
+            }
         });
-</script>
+
+        // chargement GeoJSON et peuplement select
+        fetch('TRAJETS_ALL_vacances_wgs.geojson')
+            .then(r => r.json())
+            .then(json => {
+                dataGeo = json;
+                const voyages = [...new Set(json.features.map(f => f.properties.voyage))];
+                const select = document.getElementById('voyageSelect');
+                voyages.forEach(v => {
+                    const o = document.createElement('option'); o.value = v; o.textContent = v;
+                    select.appendChild(o);
+                });
+
+                document.getElementById('goButton').addEventListener('click', () => {
+                    const v = document.getElementById('voyageSelect').value;
+                    if (!v) { alert('Veuillez sélectionner un voyage.'); return; }
+                    startAnimationForVoyage(v);
+                    // remettre UI progress
+                    updateProgressUI(0);
+                });
+
+                // reset UI quand on change de selection
+                document.getElementById('voyageSelect').addEventListener('change', () => {
+                    // nettoyage
+                    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+                    if (movingMarker) { map.removeLayer(movingMarker); movingMarker = null; }
+                    staticPolylines.forEach(pl => { try { map.removeLayer(pl); } catch(e){} });
+                    staticPolylines = [];
+                    kmCompleted = 0; voyageTotalDistance = 0; currentSegment = null;
+                    currentFeatureIndex = 0; currentStartTime = null; currentElapsedBeforePause = 0;
+                    updateProgressUI(0);
+                    document.getElementById('dates').textContent = '';
+                    document.getElementById('duration').textContent = '';
+                    document.getElementById('distance').textContent = '';
+                    document.getElementById('recap').textContent = '';
+                });
+            })
+            .catch(err => { console.error('Erreur chargement GeoJSON', err); alert('Erreur chargement GeoJSON (voir console)'); });
+    </script>
 </body>
 </html>
-
