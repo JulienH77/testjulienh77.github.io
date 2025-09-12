@@ -1,150 +1,232 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-    <meta charset="UTF-8">
+    <title>Animation des trajets avec L.Motion</title>
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mon Album Voyage</title>
-    <!-- Tes liens vers Leaflet, L.Motion, etc. (à garder) -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <script src="path/vers/L.Motion.js"></script> <!-- Remplace par le vrai chemin -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.motion/dist/leaflet.motion.min.js"></script>
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            font-family: Arial, sans-serif;
-        }
-        #map {
-            width: 100%;
-            height: 100%;
-        }
-        #animationControls {
-            position: fixed;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 10px;
-            z-index: 1000;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 10px;
-            border-radius: 10px;
-        }
-        #animationControls button {
-            padding: 8px 15px;
-            background: #333;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        #progressContainer {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 33%;
-            height: 10px;
-            background: #ddd;
-            border-radius: 5px;
-            z-index: 1000;
-        }
-        #progressBar {
-            height: 100%;
-            width: 0%;
-            background: #4CAF50;
-            border-radius: 5px;
-            position: relative;
-        }
-        #progressDot {
+        html, body, #map { width: 100%; height: 100%; margin: 0px; padding: 0px; }
+        #controls { position: absolute; z-index: 1000; top: 10px; left: 10px; background: white; padding: 10px; border-radius: 5px; }
+        select, button { margin-right: 5px; }
+        .leaflet-control-zoom { display: none !important; }
+        #info-banner {
             position: absolute;
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 15px;
-            height: 15px;
-            background: white;
-            border: 2px solid #4CAF50;
-            border-radius: 50%;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 1000;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            min-width: 300px;
         }
+        #info-banner .dates { font-size: 16px; margin-bottom: 5px; }
+        #info-banner .duration { font-size: 20px; font-weight: bold; margin: 5px 0; }
+        #info-banner .distance { font-size: 14px; color: #555; }
+        #info-banner .recap { font-size: 16px; font-weight: bold; color: #0066cc; margin-top: 10px; }
     </style>
 </head>
 <body>
     <div id="map"></div>
-
-    <!-- Contrôles d'animation -->
-    <div id="animationControls">
-        <button id="playPauseBtn">⏸️ Pause</button>
-        <button id="slowDownBtn">➖ Ralentir</button>
-        <button id="speedUpBtn">➕ Accélérer</button>
+    <div id="controls">
+        <select id="voyageSelect">
+            <option value="">-- Choisir un voyage --</option>
+        </select>
+        <button id="goButton">GO</button>
     </div>
-
-    <!-- Barre de progression -->
-    <div id="progressContainer">
-        <div id="progressBar">
-            <div id="progressDot"></div>
-        </div>
+    <div id="info-banner">
+        <div class="dates" id="dates"></div>
+        <div class="duration" id="duration"></div>
+        <div class="distance" id="distance"></div>
+        <div class="recap" id="recap"></div>
     </div>
-
     <script>
-        // 1. Initialisation de la carte Leaflet
-        const map = L.map('map').setView([48.8566, 2.3522], 5); // Exemple : centré sur la France
+        // Initialisation de la carte
+        const map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 5);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // 2. Exemple de données de trajet (à remplacer par tes vraies données)
-        const trajet = {
-            type: "Feature",
-            geometry: {
-                type: "LineString",
-                coordinates: [
-                    [2.3522, 48.8566], // Paris
-                    [7.2603, 43.7128], // Nice
-                    [5.3698, 43.2965]  // Marseille
-                ]
-            },
-            properties: {
-                distance: 1000 // Distance totale en km (exemple)
-            }
-        };
+        // Variables globales
+        let staticPolylines = [];
+        let currentMotionPolyline = null;
+        let currentAnimationTimeout = null;
 
-        // 3. Initialisation de L.Motion
-        const motion = L.motion()
-            .addTo(map)
-            .setPath(trajet.geometry.coordinates)
-            .setDuration(10000) // Durée en ms
-            .on('move', function(e) {
-                // Mise à jour de la distance parcourue
-                const totalDistance = trajet.properties.distance;
-                const currentDistance = e.distance; // Supposons que L.Motion fournit cette info
-                const progress = (currentDistance / totalDistance) * 100;
-                document.getElementById('progressBar').style.width = progress + '%';
+        // Fonction pour zoomer sur un trajet
+        function fitBoundsForTrajet(latlngs) {
+            const bounds = L.latLngBounds(latlngs);
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+        }
+
+        // Fonction pour formater une date
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+        }
+
+        // Fonction pour obtenir la couleur selon le type de trajet
+        function getColor(trajet) {
+            const colors = {
+                'avion': 'red',
+                'train': 'green',
+                'bateau': 'blue',
+                'voiture': 'yellow',
+                'bus': 'orange'
+            };
+            return colors[trajet] || 'gray';
+        }
+
+        // Chargement du GeoJSON
+        fetch('TRAJETS_ALL_vacances_wgs.geojson')
+            .then(response => response.json())
+            .then(data => {
+                // Remplit la liste déroulante
+                const voyages = [...new Set(data.features.map(f => f.properties.voyage))];
+                const select = document.getElementById('voyageSelect');
+                voyages.forEach(voyage => {
+                    const option = document.createElement('option');
+                    option.value = voyage;
+                    option.textContent = voyage;
+                    select.appendChild(option);
+                });
+
+                // Fonction pour démarrer l'animation
+                function startAnimationForVoyage(selectedVoyage) {
+                    // Arrête toute animation en cours
+                    if (currentMotionPolyline) {
+                        currentMotionPolyline.motionStop();
+                        clearTimeout(currentAnimationTimeout);
+                    }
+
+                    // Efface toutes les couches (sauf la couche de tuiles)
+                    map.eachLayer(layer => {
+                        if (!(layer instanceof L.TileLayer)) {
+                            map.removeLayer(layer);
+                        }
+                    });
+                    staticPolylines = [];
+
+                    // Filtre les trajets du voyage sélectionné
+                    const voyageFeatures = data.features
+                        .filter(f => f.properties.voyage === selectedVoyage && f.geometry.type === 'MultiLineString')
+                        .sort((a, b) => a.properties.id - b.properties.id);
+
+                    if (voyageFeatures.length === 0) {
+                        alert("Aucun trajet trouvé pour ce voyage.");
+                        return;
+                    }
+
+                    // Calcule les infos globales
+                    const firstDate = new Date(Math.min(...voyageFeatures.map(f => new Date(f.properties.date_deb))));
+                    const lastDate = new Date(Math.max(...voyageFeatures.map(f => new Date(f.properties.date_fin))));
+                    const totalDistance = voyageFeatures.reduce((sum, f) => sum + parseFloat(f.properties.distanceKM), 0);
+
+                    // Index du trajet en cours
+                    let currentIndex = 0;
+
+                    // Fonction pour animer le trajet courant
+                    function animateCurrentTrajet() {
+                        if (currentIndex >= voyageFeatures.length) {
+                            // Tous les tronçons sont terminés
+                            document.getElementById('dates').textContent = '';
+                            document.getElementById('duration').textContent = '';
+                            document.getElementById('distance').textContent = '';
+                            document.getElementById('recap').innerHTML =
+                                `Voyage du ${formatDate(firstDate)} au ${formatDate(lastDate)}<br>Distance totale : ${Math.round(totalDistance)} km`;
+                            return;
+                        }
+
+                        const feature = voyageFeatures[currentIndex];
+                        const latlngs = feature.geometry.coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
+                        const color = getColor(feature.properties.trajet);
+                        const iconHtml = getIconHtml(feature.properties.trajet);
+
+                        // Zoom sur le trajet actuel
+                        fitBoundsForTrajet(latlngs);
+
+                        // Ajoute une polyline fine pour les trajets précédents
+                        if (currentIndex > 0) {
+                            const previousFeature = voyageFeatures[currentIndex - 1];
+                            const previousLatLngs = previousFeature.geometry.coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
+                            const previousPolyline = L.polyline(previousLatLngs, {
+                                color: getColor(previousFeature.properties.trajet),
+                                weight: 2,
+                                opacity: 0.7
+                            });
+                            staticPolylines.push(previousPolyline);
+                            previousPolyline.addTo(map);
+                        }
+
+                        // Crée et démarre la polyline animée
+                        currentMotionPolyline = L.motion.polyline(
+                            latlngs,
+                            { color, weight: 4 },
+                            { easing: L.Motion.Ease.linear },
+                            { icon: L.divIcon({ html: iconHtml, iconSize: L.point(24, 24) }) }
+                        ).motionDuration(12000);
+
+                        currentMotionPolyline.addTo(map);
+
+                        // Met à jour le bandeau
+                        document.getElementById('dates').textContent =
+                            `${formatDate(feature.properties.date_deb)} → ${formatDate(feature.properties.date_fin)}`;
+                        document.getElementById('duration').textContent = feature.properties.duree;
+                        document.getElementById('distance').textContent = `${feature.properties.distanceKM} km`;
+                        document.getElementById('recap').textContent = '';
+
+                        // Démarre l'animation
+                        setTimeout(() => {
+                            currentMotionPolyline.motionStart();
+                        }, 500);
+
+                        // Passe au trajet suivant après 12 secondes
+                        currentAnimationTimeout = setTimeout(() => {
+                            currentIndex++;
+                            animateCurrentTrajet();
+                        }, 12000);
+                    }
+
+                    // Démarre l'animation du premier trajet
+                    animateCurrentTrajet();
+                }
+
+                // Fonction pour obtenir l'icône selon le type de trajet
+                function getIconHtml(trajet) {
+                    const icons = {
+                        'avion': "<i class='fa fa-plane fa-2x' aria-hidden='true'></i>",
+                        'train': "<i class='fa fa-train fa-2x' aria-hidden='true'></i>",
+                        'bateau': "<i class='fa fa-ship fa-2x' aria-hidden='true'></i>",
+                        'voiture': "<i class='fa fa-car fa-2x' aria-hidden='true'></i>",
+                        'bus': "<i class='fa fa-bus fa-2x' aria-hidden='true'></i>"
+                    };
+                    return icons[trajet] || "<i class='fa fa-question fa-2x' aria-hidden='true'></i>";
+                }
+
+                // Écouteur pour le bouton GO
+                document.getElementById('goButton').addEventListener('click', () => {
+                    const selectedVoyage = document.getElementById('voyageSelect').value;
+                    if (selectedVoyage) {
+                        startAnimationForVoyage(selectedVoyage);
+                    } else {
+                        alert("Veuillez sélectionner un voyage.");
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Erreur de chargement du GeoJSON:', error);
             });
-
-        // 4. Gestion des boutons
-        let isPlaying = true;
-        let currentSpeed = 1.0;
-
-        document.getElementById('playPauseBtn').addEventListener('click', function() {
-            isPlaying = !isPlaying;
-            this.textContent = isPlaying ? '⏸️ Pause' : '▶️ Play';
-            isPlaying ? motion.play() : motion.pause();
-        });
-
-        document.getElementById('slowDownBtn').addEventListener('click', function() {
-            currentSpeed = Math.max(0.5, currentSpeed - 0.1);
-            motion.setSpeed(currentSpeed);
-        });
-
-        document.getElementById('speedUpBtn').addEventListener('click', function() {
-            currentSpeed = Math.min(2.0, currentSpeed + 0.1);
-            motion.setSpeed(currentSpeed);
-        });
-
-        // 5. Démarrage de l'animation
-        motion.play();
     </script>
 </body>
 </html>
