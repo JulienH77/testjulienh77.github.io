@@ -47,6 +47,112 @@
         <div class="distance" id="distance"></div>
         <div class="recap" id="recap"></div>
     </div>
+    <!-- Contrôles d'animation (Play/Pause + Vitesse) -->
+    <div id="animationControls" style="
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+        z-index: 1000;
+    ">
+        <button id="playPauseBtn" style="
+            padding: 8px 15px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        ">⏯️ Play/Pause</button>
+        <button id="slowDownBtn" style="
+            padding: 8px 10px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        ">➖ Ralentir</button>
+        <button id="speedUpBtn" style="
+            padding: 8px 10px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        ">➕ Accélérer</button>
+    </div>
+    
+    <!-- Barre de progression des kilomètres -->
+    <div id="progressContainer" style="
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 33%;
+        height: 10px;
+        background: #ddd;
+        border-radius: 5px;
+        z-index: 1000;
+    ">
+        <div id="progressBar" style="
+            height: 100%;
+            width: 0%;
+            background: #4CAF50;
+            border-radius: 5px;
+            position: relative;
+        ">
+            <div id="progressDot" style="
+                position: absolute;
+                right: 0;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 15px;
+                height: 15px;
+                background: white;
+                border: 2px solid #4CAF50;
+                border-radius: 50%;
+            "></div>
+        </div>
+    </div>
+    <script>
+    // Variables pour la vitesse et l'état de l'animation
+    let currentSpeed = 1.0;
+    let isPlaying = true;
+
+    // Fonction pour mettre à jour la vitesse de l'animation
+    function updateAnimationSpeed() {
+        // Ici, tu dois adapter cette fonction pour modifier la vitesse de ton animation existante
+        // Exemple : si tu utilises L.Motion ou une bibliothèque similaire, ajuste le paramètre de vitesse
+        console.log("Vitesse mise à jour :", currentSpeed);
+    }
+
+    // Fonction pour mettre à jour la barre de progression
+    function updateProgress(percent) {
+        document.getElementById('progressBar').style.width = percent + '%';
+    }
+
+    // Événements pour les boutons
+    document.getElementById('playPauseBtn').addEventListener('click', function() {
+        isPlaying = !isPlaying;
+        this.textContent = isPlaying ? '⏸️ Pause' : '▶️ Play';
+        // Ici, tu dois ajouter la logique pour démarrer/mettre en pause ton animation
+    });
+
+    document.getElementById('slowDownBtn').addEventListener('click', function() {
+        currentSpeed = Math.max(0.5, currentSpeed - 0.1);
+        updateAnimationSpeed();
+    });
+
+    document.getElementById('speedUpBtn').addEventListener('click', function() {
+        currentSpeed = Math.min(2.0, currentSpeed + 0.1);
+        updateAnimationSpeed();
+    });
+
+    // Exemple d'appel pour mettre à jour la progression (à adapter avec tes données)
+    // updateProgress(25); // 25% de progression
+</script>
+
     <script>
         // Initialisation de la carte
         const map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 5);
@@ -230,3 +336,4 @@
     </script>
 </body>
 </html>
+
