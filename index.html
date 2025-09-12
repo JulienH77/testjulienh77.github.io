@@ -54,55 +54,63 @@
         }
         #bottom-controls button.active { background: rgba(0,102,204,0.09); border-color: rgba(0,102,204,0.4); }
 
-        #progress-container {
-            position: absolute;
-            bottom: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 33%;
-            min-width: 220px;
-            height: 12px;
-            background: #e9e9e9;
-            border-radius: 8px;
-            overflow: hidden;
-            z-index: 1200;
-        }
-        /* conteneur qui contiendra segments colorés (remplis seulement pour la portion parcourue) */
-        .progress-fill {
-            position: absolute;
-            top: 0; left: 0; height: 100%;
-            display: flex;
-            align-items: center;
-            height: 100%;
-            pointer-events: none;
-        }
         .progress-seg {
             height: 100%;
             width: 0%;
             flex: none;
         }
-        #progress-dot {
-            position: absolute;
-            top: 50%;
-            left: 0%;
-            transform: translate(-50%, -50%);
-            width: 18px; height: 18px;
-            border-radius: 50%;
-            background: white;
-            border: 3px solid #0066cc;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.18);
-            z-index: 1300;
-            pointer-events: none;
-        }
-        #progress-labels {
-            position: absolute;
-            bottom: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 12px;
-            color: #333;
-            z-index: 1200;
-        }
+#progress-container {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 33%;
+    min-width: 220px;
+    height: 12px;
+    background: #e9e9e9;
+    border-radius: 8px;
+    overflow: visible; /* ⚠️ pour que le rond dépasse bien */
+    z-index: 1200;
+}
+
+/* conteneur avec les segments colorés remplis progressivement */
+#progress-fill {
+    display: flex;
+    height: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.progress-seg {
+    flex: 1 1 auto;
+    width: 0%; /* rempli progressivement en JS */
+    height: 100%;
+    transition: width 0.2s linear;
+}
+#progress-dot {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    border: 3px solid #0066cc;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    z-index: 1300; /* ⚡ au-dessus de tout */
+    pointer-events: none;
+}
+
+#progress-labels {
+    position: absolute;
+    bottom: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: #333;
+    z-index: 1200;
+}
+
 
         @media (max-width: 600px) {
             #progress-container { width: 60%; min-width: 160px; }
@@ -219,23 +227,19 @@
     // Each .progress-seg has a flex-basis proportional to feature distance/totalDistance,
     // but its width (actual filled %) is driven by inline style.
     function buildProgressSegments() {
-        // clear
         progressFill.innerHTML = '';
         if (!voyageFeatures || voyageFeatures.length === 0 || totalDistance <= 0) return;
         voyageFeatures.forEach(f => {
             const seg = document.createElement('div');
             seg.className = 'progress-seg';
-            // store metadata on element
             seg.dataset.dist = parseFloat(f.properties.distanceKM) || 0;
             seg.dataset.trajet = f.properties.trajet || '';
-            seg.style.width = '0%'; // start empty
-            // we compute flex-basis as percent share to reserve space
-            const sharePct = ((parseFloat(f.properties.distanceKM) || 0) / totalDistance) * 100;
-            seg.style.flexBasis = sharePct + '%';
-            seg.style.background = getColor(f.properties.trajet);
+            seg.style.width = '0%';
+            seg.style.backgroundColor = getColor(f.properties.trajet); // ⚡ couleur appliquée tout de suite
             progressFill.appendChild(seg);
         });
     }
+
 
     // update progress fill widths according to kmCompleted + currentSegment progress fraction
     function updateProgressBarVisual(fracOfCurrentSegment = 0) {
@@ -477,3 +481,4 @@
     </script>
 </body>
 </html>
+
