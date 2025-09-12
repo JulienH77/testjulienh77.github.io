@@ -140,412 +140,235 @@
         </div>
     </div>
 
-    <script>
-        // Initialisation de la carte
-        const map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
+<script>
+    // Initialisation de la carte
+    const map = L.map("map", { zoomControl: false }).setView([48.8566, 2.3522], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
 
-        // Variables globales
-        let staticPolylines = [];
-        let currentMotionPolyline = null;
-        let currentAnimationTimeout = null;
+    // Variables globales
+    let staticPolylines = [];
+    let currentMotionPolyline = null;
+    let currentAnimationTimeout = null;
 
-        /* --- Variables ajoutées pour controls/progress --- */
-        const ANIM = {
-            slow: 24000,    // 24s par tronçon (lent)
-            normal: 12000,  // 12s par tronçon (par défaut dans ton code)
-            fast: 6000      // 6s par tronçon (rapide)
-        };
-        let currentAnimDuration = ANIM.normal;
-        let isPlaying = true;
-        let voyageTotalDistance = 0;     // km total du voyage sélectionné
-        let kmCompleted = 0;            // km déjà complétés (tronçons finis)
-        let currentSegmentDistance = 0; // km du tronçon en cours
-        let motionStartTimestamp = null; // timestamp quand le tronçon courant a démarré (pour calcul progress)
-        let progressInterval = null;
+    // --- Variables ajoutées ---
+    const ANIM = { slow: 24000, normal: 12000, fast: 6000 };
+    let currentAnimDuration = ANIM.normal;
+    let isPlaying = true;
+    let voyageTotalDistance = 0;
+    let kmCompleted = 0;
+    let currentSegmentDistance = 0;
+    let motionStartTimestamp = null;
+    let progressInterval = null;
+    let remainingTimeForSegment = null;
 
-        // Fonction pour zoomer sur un trajet
-        function fitBoundsForTrajet(latlngs) {
-            const bounds = L.latLngBounds(latlngs);
-            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+    function updateProgressBar() {
+        if (!voyageTotalDistance || voyageTotalDistance <= 0) return;
+        let progressKm = kmCompleted;
+        if (motionStartTimestamp && currentSegmentDistance) {
+            const elapsed = Date.now() - motionStartTimestamp;
+            const frac = Math.min(1, elapsed / currentAnimDuration);
+            progressKm += frac * currentSegmentDistance;
         }
+        const percent = Math.min(1, progressKm / voyageTotalDistance);
+        document.getElementById('progress-dot').style.left = (percent * 100) + '%';
+        document.getElementById('km-done').textContent = `${Math.round(progressKm)} km`;
+        document.getElementById('km-remaining').textContent = `${Math.max(0, Math.round(voyageTotalDistance - progressKm))} km restants`;
+    }
 
-        // Fonction pour formater une date
-        function formatDate(dateStr) {
-            const date = new Date(dateStr);
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-            const hours = String(date.getHours()).padStart(2, '0');
-            const minutes = String(date.getMinutes()).padStart(2, '0');
-            return `${day}/${month}/${year} ${hours}:${minutes}`;
-        }
+    // Fonction pour zoomer sur un trajet
+    function fitBoundsForTrajet(latlngs) {
+        const bounds = L.latLngBounds(latlngs);
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+    }
 
-        // Fonction pour obtenir la couleur selon le type de trajet
-        function getColor(trajet) {
-            const colors = {
-                'avion': 'red',
-                'train': 'green',
-                'bateau': 'blue',
-                'voiture': 'yellow',
-                'bus': 'orange'
-            };
-            return colors[trajet] || 'gray';
-        }
+    function formatDate(dateStr) {
+        const date = new Date(dateStr);
+        return `${date.getDate().toString().padStart(2, '0')}/${
+            (date.getMonth()+1).toString().padStart(2, '0')}/${date.getFullYear()} ${
+            date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`;
+    }
 
-        // Chargement du GeoJSON
-        fetch('TRAJETS_ALL_vacances_wgs.geojson')
-            .then(response => response.json())
-            .then(data => {
-                // Remplit la liste déroulante
-                const voyages = [...new Set(data.features.map(f => f.properties.voyage))];
-                const select = document.getElementById('voyageSelect');
-                voyages.forEach(voyage => {
-                    const option = document.createElement('option');
-                    option.value = voyage;
-                    option.textContent = voyage;
-                    select.appendChild(option);
-                });
+    function getColor(trajet) {
+        return { avion: 'red', train: 'green', bateau: 'blue', voiture: 'yellow', bus: 'orange' }[trajet] || 'gray';
+    }
 
-                // Fonction pour démarrer l'animation
-                function startAnimationForVoyage(selectedVoyage) {
-                    // Arrête toute animation en cours
-                    if (currentMotionPolyline) {
-                        try { currentMotionPolyline.motionStop(); } catch (e) {}
-                        clearTimeout(currentAnimationTimeout);
-                    }
+    fetch('TRAJETS_ALL_vacances_wgs.geojson')
+        .then(r => r.json())
+        .then(data => {
+            const voyages = [...new Set(data.features.map(f => f.properties.voyage))];
+            const select = document.getElementById('voyageSelect');
+            voyages.forEach(v => {
+                const o = document.createElement('option');
+                o.value = v; o.textContent = v;
+                select.appendChild(o);
+            });
 
-                    // Efface toutes les couches (sauf la couche de tuiles)
-                    map.eachLayer(layer => {
-                        if (!(layer instanceof L.TileLayer)) {
-                            map.removeLayer(layer);
-                        }
-                    });
-                    staticPolylines = [];
-
-                    // Filtre les trajets du voyage sélectionné
-                    const voyageFeatures = data.features
-                        .filter(f => f.properties.voyage === selectedVoyage && f.geometry.type === 'MultiLineString')
-                        .sort((a, b) => a.properties.id - b.properties.id);
-
-                    if (voyageFeatures.length === 0) {
-                        alert("Aucun trajet trouvé pour ce voyage.");
-                        return;
-                    }
-
-                    // Calcule les infos globales
-                    const firstDate = new Date(Math.min(...voyageFeatures.map(f => new Date(f.properties.date_deb))));
-                    const lastDate = new Date(Math.max(...voyageFeatures.map(f => new Date(f.properties.date_fin))));
-                    const totalDistance = voyageFeatures.reduce((sum, f) => sum + parseFloat(f.properties.distanceKM), 0);
-
-                    // mets à jour variable globale
-                    voyageTotalDistance = totalDistance;
-                    kmCompleted = 0;
-
-                    // Index du trajet en cours
-                    let currentIndex = 0;
-
-                    // Fonction pour mettre à jour la barre de progression (en km et position)
-                    function updateProgressBar() {
-                        if (!voyageTotalDistance || voyageTotalDistance <= 0) {
-                            document.getElementById('km-done').textContent = `0 km`;
-                            document.getElementById('km-remaining').textContent = `0 km restants`;
-                            return;
-                        }
-
-                        let progressKm = kmCompleted;
-                        if (motionStartTimestamp && currentSegmentDistance) {
-                            const elapsed = Date.now() - motionStartTimestamp;
-                            const frac = Math.max(0, Math.min(1, elapsed / currentAnimDuration));
-                            progressKm += frac * currentSegmentDistance;
-                        }
-                        const percent = Math.max(0, Math.min(1, progressKm / voyageTotalDistance));
-                        // mise à jour dot (left en %)
-                        const dot = document.getElementById('progress-dot');
-                        dot.style.left = (percent * 100) + '%';
-
-                        document.getElementById('km-done').textContent = `${Math.round(progressKm)} km`;
-                        const remaining = Math.max(0, voyageTotalDistance - progressKm);
-                        document.getElementById('km-remaining').textContent = `${Math.round(remaining)} km restants`;
-                    }
-
-                    // Fonction pour animer le trajet courant
-                    function animateCurrentTrajet() {
-                        if (currentIndex >= voyageFeatures.length) {
-                            // Tous les tronçons sont terminés
-                            document.getElementById('dates').textContent = '';
-                            document.getElementById('duration').textContent = '';
-                            document.getElementById('distance').textContent = '';
-                            document.getElementById('recap').innerHTML =
-                                `Voyage du ${formatDate(firstDate)} au ${formatDate(lastDate)}<br>Distance totale : ${Math.round(totalDistance)} km`;
-                            // Ensure progress shows 100%
-                            kmCompleted = voyageTotalDistance;
-                            updateProgressBar();
-                            clearInterval(progressInterval);
-                            return;
-                        }
-
-                        const feature = voyageFeatures[currentIndex];
-                        const latlngs = feature.geometry.coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
-                        const color = getColor(feature.properties.trajet);
-                        const iconHtml = getIconHtml(feature.properties.trajet);
-
-                        // Zoom sur le trajet actuel
-                        fitBoundsForTrajet(latlngs);
-
-                        // Ajoute une polyline fine pour les trajets précédents
-                        if (currentIndex > 0) {
-                            const previousFeature = voyageFeatures[currentIndex - 1];
-                            const previousLatLngs = previousFeature.geometry.coordinates.flat().map(coord => L.latLng(coord[1], coord[0]));
-                            const previousPolyline = L.polyline(previousLatLngs, {
-                                color: getColor(previousFeature.properties.trajet),
-                                weight: 2,
-                                opacity: 0.7
-                            });
-                            staticPolylines.push(previousPolyline);
-                            previousPolyline.addTo(map);
-                        }
-
-                        // définit la distance du tronçon courant
-                        currentSegmentDistance = parseFloat(feature.properties.distanceKM) || 0;
-
-                        // Crée et démarre la polyline animée en utilisant la variable currentAnimDuration
-                        if (currentMotionPolyline) {
-                            try { currentMotionPolyline.motionStop(); } catch (e) {}
-                            clearTimeout(currentAnimationTimeout);
-                        }
-
-                        currentMotionPolyline = L.motion.polyline(
-                            latlngs,
-                            { color, weight: 4 },
-                            { easing: L.Motion.Ease.linear },
-                            { icon: L.divIcon({ html: iconHtml, iconSize: L.point(24, 24) }) }
-                        ).motionDuration(currentAnimDuration);
-
-                        currentMotionPolyline.addTo(map);
-
-                        // Met à jour le bandeau
-                        document.getElementById('dates').textContent =
-                            `${formatDate(feature.properties.date_deb)} → ${formatDate(feature.properties.date_fin)}`;
-                        document.getElementById('duration').textContent = feature.properties.duree;
-                        document.getElementById('distance').textContent = `${feature.properties.distanceKM} km`;
-                        document.getElementById('recap').textContent = '';
-
-                        // Handler de fin de tronçon (réutilisé)
-                        function endOfSegment() {
-                            // arrête intervalle de progression
-                            clearInterval(progressInterval);
-                            // marque le tronçon comme complété
-                            kmCompleted += currentSegmentDistance;
-                            // incrémente et passe au suivant
-                            currentIndex++;
-                            // remet motionStartTimestamp
-                            motionStartTimestamp = null;
-                            animateCurrentTrajet();
-                        }
-
-                        // Démarre l'animation et le timer associé
-                        // (500ms de délai comme avant)
-                        setTimeout(() => {
-                            try {
-                                currentMotionPolyline.motionStart();
-                                motionStartTimestamp = Date.now();
-                                // clear éventuel timeout
-                                clearTimeout(currentAnimationTimeout);
-                                // lance l'intervalle de maj progress
-                                clearInterval(progressInterval);
-                                progressInterval = setInterval(updateProgressBar, 200);
-                                // met en place le timeout de fin du tronçon
-                                currentAnimationTimeout = setTimeout(() => {
-                                    // s'assure que l'animation est stoppée proprement
-                                    try { currentMotionPolyline.motionStop(); } catch(e){}
-                                    endOfSegment();
-                                }, currentAnimDuration);
-                                isPlaying = true;
-                                updatePlayPauseUI();
-                            } catch (e) {
-                                console.error('Erreur motionStart:', e);
-                                endOfSegment();
-                            }
-                        }, 500);
-                    }
-
-                    // Démarre l'animation du premier trajet
-                    animateCurrentTrajet();
+            function startAnimationForVoyage(selectedVoyage) {
+                if (currentMotionPolyline) {
+                    try { currentMotionPolyline.motionStop(); } catch (e) {}
+                    clearTimeout(currentAnimationTimeout);
+                    clearInterval(progressInterval);
                 }
+                map.eachLayer(l => { if (!(l instanceof L.TileLayer)) map.removeLayer(l); });
+                staticPolylines = [];
 
-                // Fonction pour obtenir l'icône selon le type de trajet
-                function getIconHtml(trajet) {
-                    const icons = {
-                        'avion': "<i class='fa fa-plane fa-2x' aria-hidden='true'></i>",
-                        'train': "<i class='fa fa-train fa-2x' aria-hidden='true'></i>",
-                        'bateau': "<i class='fa fa-ship fa-2x' aria-hidden='true'></i>",
-                        'voiture': "<i class='fa fa-car fa-2x' aria-hidden='true'></i>",
-                        'bus': "<i class='fa fa-bus fa-2x' aria-hidden='true'></i>"
-                    };
-                    return icons[trajet] || "<i class='fa fa-question fa-2x' aria-hidden='true'></i>";
-                }
+                const voyageFeatures = data.features
+                    .filter(f => f.properties.voyage === selectedVoyage && f.geometry.type === 'MultiLineString')
+                    .sort((a, b) => a.properties.id - b.properties.id);
 
-                // Écouteur pour le bouton GO
-                document.getElementById('goButton').addEventListener('click', () => {
-                    const selectedVoyage = document.getElementById('voyageSelect').value;
-                    if (selectedVoyage) {
-                        startAnimationForVoyage(selectedVoyage);
-                    } else {
-                        alert("Veuillez sélectionner un voyage.");
-                    }
-                });
+                if (!voyageFeatures.length) { alert("Aucun trajet trouvé."); return; }
 
+                const firstDate = new Date(Math.min(...voyageFeatures.map(f => new Date(f.properties.date_deb))));
+                const lastDate = new Date(Math.max(...voyageFeatures.map(f => new Date(f.properties.date_fin))));
+                voyageTotalDistance = voyageFeatures.reduce((s, f) => s + parseFloat(f.properties.distanceKM), 0);
+                kmCompleted = 0;
 
-                /* -------------------- Contrôles Play/Pause & Vitesse & Progress -------------------- */
+                let currentIndex = 0;
 
-                const playPauseBtn = document.getElementById('playPauseBtn');
-                const slowBtn = document.getElementById('slowBtn');
-                const normalBtn = document.getElementById('normalBtn');
-                const fastBtn = document.getElementById('fastBtn');
-
-                function updatePlayPauseUI() {
-                    if (isPlaying) {
-                        playPauseBtn.textContent = '⏸';
-                    } else {
-                        playPauseBtn.textContent = '▶';
-                    }
-                }
-
-                // Play / Pause
-                playPauseBtn.addEventListener('click', () => {
-                    if (!currentMotionPolyline) return;
-                    if (isPlaying) {
-                        // Pause : stoppe motion et timeout restant
-                        try { currentMotionPolyline.motionPause(); } catch(e){}
-                        // calcule temps restant
-                        if (motionStartTimestamp) {
-                            const elapsed = Date.now() - motionStartTimestamp;
-                            remainingTimeForSegment = Math.max(0, currentAnimDuration - elapsed);
-                        } else {
-                            remainingTimeForSegment = currentAnimDuration;
-                        }
-                        clearTimeout(currentAnimationTimeout);
+                function animateCurrentTrajet() {
+                    if (currentIndex >= voyageFeatures.length) {
+                        document.getElementById('recap').innerHTML =
+                            `Voyage du ${formatDate(firstDate)} au ${formatDate(lastDate)}<br>Distance totale : ${Math.round(voyageTotalDistance)} km`;
+                        kmCompleted = voyageTotalDistance;
+                        updateProgressBar();
                         clearInterval(progressInterval);
-                        isPlaying = false;
-                        updatePlayPauseUI();
-                    } else {
-                        // Resume : resume motion et remet timeout avec remainingTimeForSegment
-                        try { currentMotionPolyline.motionResume(); } catch(e){}
-                        // si remainingTimeForSegment n'est pas défini, on utilise currentAnimDuration
-                        if (typeof remainingTimeForSegment === 'undefined' || remainingTimeForSegment === null) {
-                            remainingTimeForSegment = currentAnimDuration;
-                        }
-                        // fixe new motionStartTimestamp afin que updateProgressBar calcule correctement
-                        const elapsedSoFarFraction = 1 - (remainingTimeForSegment / currentAnimDuration);
-                        motionStartTimestamp = Date.now() - (elapsedSoFarFraction * currentAnimDuration);
-                        // relance intervalle de maj
-                        progressInterval = setInterval(() => {
-                            // si voyageTotalDistance exsite, on met à jour
-                            if (voyageTotalDistance > 0) updateProgressBar();
-                        }, 200);
-                        // remet le timeout
-                        clearTimeout(currentAnimationTimeout);
-                        currentAnimationTimeout = setTimeout(() => {
-                            try { currentMotionPolyline.motionStop(); } catch(e){}
-                            // on simule la fin de segment : on incremente kmCompleted et on force l'appel à animateCurrentTrajet via click GO sequence
-                            // Pour rester simple : on déclenche un événement clique interne en réutilisant l'ancienne logique :
-                            // On incrémente ici (la logique d'incrément est dans animateCurrentTrajet) -> pour assurer stabilité, on arrête tout et relance la suite en appelant motionStop puis en incrémentant.
-                            // Le code de fin de segment est interne : on simule en déclenchant la fin par re-appel de startAnimationForVoyage ? Non — on s'appuie sur le timeout pour appeler la suite dans la logique principale.
-                            // Ici on se contente d'appeler motionStop pour terminer proprement et laisser le timeout déclencher la suite.
-                        }, remainingTimeForSegment);
-                        isPlaying = true;
-                        updatePlayPauseUI();
-                    }
-                });
-
-                // Vitesse : helper pour mettre à jour UI et durée
-                function setSpeedMode(mode) {
-                    currentAnimDuration = ANIM[mode];
-                    // update active button
-                    slowBtn.classList.toggle('active', mode === 'slow');
-                    normalBtn.classList.toggle('active', mode === 'normal');
-                    fastBtn.classList.toggle('active', mode === 'fast');
-
-                    // Si une animation est en cours, on applique le changement au motion object et on ajuste le timeout restant
-                    if (currentMotionPolyline && motionStartTimestamp) {
-                        const oldDuration = currentAnimDuration; // temporary but we'll set properly below
-                        // WARNING: need accurate old duration; but we store previous before set
-                    }
-                }
-
-                // Pour gerer correctement le changement de vitesse en cours d'animation,
-                // on implémente une fonction dédiée qui recalcule les timeouts et ajuste motionDuration
-                function changeSpeedTo(newDuration) {
-                    if (!currentMotionPolyline || !motionStartTimestamp) {
-                        // pas d'animation en cours : on change la valeur pour les segments futurs
-                        currentAnimDuration = newDuration;
-                        slowBtn.classList.toggle('active', currentAnimDuration === ANIM.slow);
-                        normalBtn.classList.toggle('active', currentAnimDuration === ANIM.normal);
-                        fastBtn.classList.toggle('active', currentAnimDuration === ANIM.fast);
                         return;
                     }
-                    // calcul de progression
-                    const oldDuration = currentAnimDuration;
+
+                    const f = voyageFeatures[currentIndex];
+                    const latlngs = f.geometry.coordinates.flat().map(c => L.latLng(c[1], c[0]));
+                    const color = getColor(f.properties.trajet);
+                    const iconHtml = getIconHtml(f.properties.trajet);
+
+                    fitBoundsForTrajet(latlngs);
+
+                    if (currentIndex > 0) {
+                        const prevF = voyageFeatures[currentIndex-1];
+                        const prevLatLngs = prevF.geometry.coordinates.flat().map(c => L.latLng(c[1], c[0]));
+                        L.polyline(prevLatLngs, { color: getColor(prevF.properties.trajet), weight: 2, opacity: 0.7 }).addTo(map);
+                    }
+
+                    currentSegmentDistance = parseFloat(f.properties.distanceKM) || 0;
+
+                    if (currentMotionPolyline) try { currentMotionPolyline.motionStop(); } catch(e){}
+                    clearTimeout(currentAnimationTimeout);
+
+                    currentMotionPolyline = L.motion.polyline(
+                        latlngs,
+                        { color, weight: 4 },
+                        { easing: L.Motion.Ease.linear },
+                        { icon: L.divIcon({ html: iconHtml, iconSize: L.point(24,24) }) }
+                    ).motionDuration(currentAnimDuration);
+                    currentMotionPolyline.addTo(map);
+
+                    document.getElementById('dates').textContent = `${formatDate(f.properties.date_deb)} → ${formatDate(f.properties.date_fin)}`;
+                    document.getElementById('duration').textContent = f.properties.duree;
+                    document.getElementById('distance').textContent = `${f.properties.distanceKM} km`;
+                    document.getElementById('recap').textContent = '';
+
+                    setTimeout(() => {
+                        try {
+                            currentMotionPolyline.motionStart();
+                            motionStartTimestamp = Date.now();
+                            clearInterval(progressInterval);
+                            progressInterval = setInterval(updateProgressBar, 200);
+
+                            clearTimeout(currentAnimationTimeout);
+                            currentAnimationTimeout = setTimeout(() => {
+                                try { currentMotionPolyline.motionStop(); } catch(e){}
+                                kmCompleted += currentSegmentDistance;
+                                currentIndex++;
+                                motionStartTimestamp = null;
+                                animateCurrentTrajet();
+                            }, currentAnimDuration);
+
+                            isPlaying = true;
+                            updatePlayPauseUI();
+                        } catch(e) { console.error(e); }
+                    }, 500);
+                }
+
+                animateCurrentTrajet();
+            }
+
+            function getIconHtml(trajet) {
+                const icons = {
+                    avion:"<i class='fa fa-plane fa-2x'></i>",
+                    train:"<i class='fa fa-train fa-2x'></i>",
+                    bateau:"<i class='fa fa-ship fa-2x'></i>",
+                    voiture:"<i class='fa fa-car fa-2x'></i>",
+                    bus:"<i class='fa fa-bus fa-2x'></i>"
+                };
+                return icons[trajet] || "<i class='fa fa-question fa-2x'></i>";
+            }
+
+            document.getElementById('goButton').addEventListener('click', () => {
+                const v = document.getElementById('voyageSelect').value;
+                if (v) startAnimationForVoyage(v);
+                else alert("Sélectionnez un voyage.");
+            });
+
+            // --- Contrôles Play/Pause/Vitesse ---
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            const slowBtn = document.getElementById('slowBtn');
+            const normalBtn = document.getElementById('normalBtn');
+            const fastBtn = document.getElementById('fastBtn');
+
+            function updatePlayPauseUI() {
+                playPauseBtn.textContent = isPlaying ? '⏸' : '▶';
+            }
+
+            playPauseBtn.addEventListener('click', () => {
+                if (!currentMotionPolyline) return;
+                if (isPlaying) {
+                    currentMotionPolyline.motionPause();
                     const elapsed = Date.now() - motionStartTimestamp;
-                    const fracDone = Math.max(0, Math.min(1, elapsed / oldDuration));
-                    // on positionne la nouvelle durée totale pour ce tronçon
+                    remainingTimeForSegment = Math.max(0, currentAnimDuration - elapsed);
+                    clearTimeout(currentAnimationTimeout);
+                    clearInterval(progressInterval);
+                    isPlaying = false;
+                } else {
+                    currentMotionPolyline.motionResume();
+                    motionStartTimestamp = Date.now() - (currentAnimDuration - remainingTimeForSegment);
+                    progressInterval = setInterval(updateProgressBar, 200);
+                    currentAnimationTimeout = setTimeout(() => {
+                        try { currentMotionPolyline.motionStop(); } catch(e){}
+                        kmCompleted += currentSegmentDistance;
+                    }, remainingTimeForSegment);
+                    isPlaying = true;
+                }
+                updatePlayPauseUI();
+            });
+
+            function changeSpeedTo(newDuration) {
+                if (!currentMotionPolyline || !motionStartTimestamp) {
                     currentAnimDuration = newDuration;
-                    // on demande au motion object d'adopter la nouvelle durée (le plugin supporte motionDuration pendant l'animation)
-                    try { currentMotionPolyline.motionDuration(currentAnimDuration); } catch (e) { console.warn('motionDuration change non supporté:', e); }
-                    // on recalcule le timestamp de démarrage pour que nos calculs d'elapsed restent cohérents
-                    motionStartTimestamp = Date.now() - (fracDone * currentAnimDuration);
-                    // on recalcule le temps restant et ré-affecte le timeout
-                    const remainingMs = Math.max(0, currentAnimDuration * (1 - fracDone));
+                } else {
+                    const elapsed = Date.now() - motionStartTimestamp;
+                    const frac = Math.min(1, elapsed / currentAnimDuration);
+                    currentAnimDuration = newDuration;
+                    currentMotionPolyline.motionDuration(newDuration);
+                    motionStartTimestamp = Date.now() - frac * newDuration;
+                    const remaining = newDuration * (1 - frac);
                     clearTimeout(currentAnimationTimeout);
                     currentAnimationTimeout = setTimeout(() => {
-                        try { currentMotionPolyline.motionStop(); } catch (e) {}
-                        // pour la fin du segment on déclenche la logique de passage au suivant :
-                        // on simule l'appel de fin : incrémentation kmCompleted + lancement du suivant
-                        // mais ce bloc est identique à l'ancien setTimeout définie dans animateCurrentTrajet,
-                        // donc ici on appelle manuellement la fin via dispatch d'un événement custom
-                        // afin d'utiliser la logique interne.
-                        // Simple et robuste : on retire l'animation et on laisse le code principal continuer en relançant animateCurrentTrajet.
-                        // (dans notre structure animateCurrentTrajet setTimeout appelle motionStop puis passe au suivant)
-                        // Ici on se contente d'appeler motionStop() et de réutiliser le timeout pour passer au suivant.
-                    }, remainingMs);
-
-                    // Met à jour UI des boutons
-                    slowBtn.classList.toggle('active', currentAnimDuration === ANIM.slow);
-                    normalBtn.classList.toggle('active', currentAnimDuration === ANIM.normal);
-                    fastBtn.classList.toggle('active', currentAnimDuration === ANIM.fast);
+                        try { currentMotionPolyline.motionStop(); } catch(e){}
+                        kmCompleted += currentSegmentDistance;
+                    }, remaining);
                 }
+                slowBtn.classList.toggle('active', newDuration === ANIM.slow);
+                normalBtn.classList.toggle('active', newDuration === ANIM.normal);
+                fastBtn.classList.toggle('active', newDuration === ANIM.fast);
+            }
 
-                // Événements des boutons vitesse
-                slowBtn.addEventListener('click', () => {
-                    changeSpeedTo(ANIM.slow);
-                });
-                normalBtn.addEventListener('click', () => {
-                    changeSpeedTo(ANIM.normal);
-                });
-                fastBtn.addEventListener('click', () => {
-                    changeSpeedTo(ANIM.fast);
-                });
-
-                // update UI initiale
-                updatePlayPauseUI();
-
-                // Lorsque la page est rechargée / on change de voyage on veut reset la progression
-                document.getElementById('voyageSelect').addEventListener('change', () => {
-                    kmCompleted = 0;
-                    voyageTotalDistance = 0;
-                    currentSegmentDistance = 0;
-                    motionStartTimestamp = null;
-                    clearInterval(progressInterval);
-                    updateProgressBar();
-                });
-
-            })
-            .catch(error => {
-                console.error('Erreur de chargement du GeoJSON:', error);
-            });
-    </script>
+            slowBtn.addEventListener('click', () => changeSpeedTo(ANIM.slow));
+            normalBtn.addEventListener('click', () => changeSpeedTo(ANIM.normal));
+            fastBtn.addEventListener('click', () => changeSpeedTo(ANIM.fast));
+            updatePlayPauseUI();
+        });
+</script>
 </body>
 </html>
+
