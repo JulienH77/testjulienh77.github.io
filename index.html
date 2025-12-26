@@ -407,7 +407,8 @@
     });
 
     // build voyage list and start logic
-    fetch('https://raw.githubusercontent.com/JulienH77/julienh77.github.io/52b89324afe01f7e6decdd6dcfdf3f83f09ded55/GEOJSON/TRAJETS_ALL_vacances_wgs.geojson')
+    fetch('https://github.com/JulienH77/julienh77.github.io/blob/8b97295df7ac6c40809cd1fb8a02df43a75e9269/GEOJSON/TRAJETS_ALL_vacances_wgs.geojson')
+/*https://raw.githubusercontent.com/JulienH77/julienh77.github.io/52b89324afe01f7e6decdd6dcfdf3f83f09ded55/GEOJSON/TRAJETS_ALL_vacances_wgs.geojson')*/
         .then(r => r.json())
         .then(json => {
             dataGeo = json;
@@ -477,6 +478,7 @@
     </script>
 </body>
 </html>
+
 
 
 
